@@ -10,7 +10,16 @@ import {
 import { useUnits } from "../ui/units";
 
 type Drag =
-  | { kind: "corner"; index: number }
+  | {
+      kind: "corner";
+      index: number;
+      ox: number;
+      oz: number;
+      prev: number;
+      next: number;
+      aHoriz: boolean; // edge prev->corner originally horizontal
+      bHoriz: boolean; // edge corner->next originally horizontal
+    }
   | {
       kind: "edge";
       index: number;
@@ -46,10 +55,12 @@ export function PlanView({
   project,
   setProject,
   showDims,
+  ortho,
 }: {
   project: Project;
   setProject: React.Dispatch<React.SetStateAction<Project>>;
   showDims: boolean;
+  ortho: boolean;
 }) {
   const { fmt, parse, units } = useUnits();
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -105,15 +116,24 @@ export function PlanView({
     const { x, z } = rp;
     if (drag.kind === "corner") {
       movedRef.current = true;
-      const sx = snap(x);
-      const sz = snap(z);
+      const nx = snap(x);
+      const nz = snap(z);
+      const d = drag;
       setProject((pr) => ({
         ...pr,
         room: {
           ...pr.room,
-          walls: pr.room.walls.map((p, i) =>
-            i === drag.index ? { x: sx, z: sz } : p,
-          ),
+          walls: pr.room.walls.map((p, i) => {
+            if (i === d.index) return { x: nx, z: nz };
+            if (!ortho) return p;
+            // keep both adjacent walls axis-aligned by sliding the
+            // neighbour corner's matching coordinate with this one
+            if (i === d.prev)
+              return d.aHoriz ? { ...p, z: nz } : { ...p, x: nx };
+            if (i === d.next)
+              return d.bHoriz ? { ...p, z: nz } : { ...p, x: nx };
+            return p;
+          }),
         },
       }));
     } else if (drag.kind === "edge") {
@@ -217,10 +237,11 @@ export function PlanView({
   return (
     <div className="plan" ref={wrapRef}>
       <p className="label" style={{ padding: "8px 12px 0" }}>
-        <b>Drag a wall</b> to pull it in/out. <b>Click anywhere on a wall</b>{" "}
-        to drop a breakpoint, then drag that corner. For a straight jut: drop
-        two breakpoints, then drag the wall between them out. Double-click a
-        corner to remove it. Drag cabinets/totes to place them.
+        <b>Drag a wall</b> to pull it in/out. <b>Click a wall</b> to drop a
+        breakpoint. With <b>Ortho 90° on</b>, dragging a corner stays
+        axis-aligned (no diagonal walls) — use the numeric <b>90° jut</b> tool
+        in the left panel for exact juts. Double-click a corner to remove it.
+        Drag cabinets/totes to place them.
         {room.baseboard && (
           <>
             {" "}
@@ -486,7 +507,19 @@ export function PlanView({
               (e.target as Element).setPointerCapture?.(e.pointerId);
               movedRef.current = false;
               setGhost(null);
-              setDrag({ kind: "corner", index: i });
+              const n = walls.length;
+              const A = walls[(i - 1 + n) % n];
+              const B = walls[(i + 1) % n];
+              setDrag({
+                kind: "corner",
+                index: i,
+                ox: p.x,
+                oz: p.z,
+                prev: (i - 1 + n) % n,
+                next: (i + 1) % n,
+                aHoriz: Math.abs(A.z - p.z) <= Math.abs(A.x - p.x),
+                bHoriz: Math.abs(B.z - p.z) <= Math.abs(B.x - p.x),
+              });
             }}
             onDoubleClick={(e) => {
               e.stopPropagation();
