@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import type { Project } from "../domain/types";
 import { runnerLayout } from "../geometry/runner";
+import { baseboardLengthInches, bumpPlanRect } from "../domain/room";
 import { useUnits } from "../ui/units";
 
 type Drag =
@@ -23,8 +24,11 @@ export function PlanView({
   const svgRef = useRef<SVGSVGElement>(null);
   const [drag, setDrag] = useState<Drag>(null);
 
-  const { length: L, width: W } = project.room;
-  const pad = Math.max(L, W) * 0.08 + 6;
+  const { length: L, width: W, wallThickness: WT } = project.room;
+  const pad = Math.max(L, W) * 0.08 + WT + 6;
+  const bbIn = baseboardLengthInches(project.room);
+  const bbFt = Math.floor(bbIn / 12);
+  const bbRem = Math.round(bbIn - bbFt * 12);
 
   function toRoom(e: React.PointerEvent): { x: number; z: number } {
     const svg = svgRef.current!;
@@ -63,8 +67,16 @@ export function PlanView({
     <div className="plan">
       <p className="label" style={{ padding: "8px 12px 0" }}>
         Drag pieces to place them in the room. Room ={" "}
-        {fmt(L)} (L) × {fmt(W)} (W). Set room size and rotation in the left
-        panel; runners follow their carcasses automatically.
+        {fmt(L)} (L) × {fmt(W)} (W).
+        {project.room.baseboard && (
+          <>
+            {" "}
+            Baseboard run ≈ <b>{bbFt}&apos; {bbRem}&quot;</b> (reference only —
+            not in the cut list).
+          </>
+        )}{" "}
+        Set room/walls and bump-outs in the left panel; runners follow their
+        carcasses automatically.
       </p>
       <svg
         ref={svgRef}
@@ -76,7 +88,17 @@ export function PlanView({
         onPointerUp={() => setDrag(null)}
         onPointerLeave={() => setDrag(null)}
       >
-        {/* room */}
+        {/* wall outer face */}
+        <rect
+          x={-L / 2 - WT}
+          y={-W / 2 - WT}
+          width={L + 2 * WT}
+          height={W + 2 * WT}
+          fill="#2a2a31"
+          stroke="#3a6ea5"
+          strokeWidth={Math.max(L, W) / 360}
+        />
+        {/* room interior */}
         <rect
           x={-L / 2}
           y={-W / 2}
@@ -84,8 +106,48 @@ export function PlanView({
           height={W}
           fill="#15151a"
           stroke="#3a6ea5"
-          strokeWidth={Math.max(L, W) / 300}
+          strokeWidth={Math.max(L, W) / 360}
         />
+        {/* bump-outs */}
+        {project.room.bumpOuts.map((b) => {
+          const r = bumpPlanRect(project.room, b);
+          return (
+            <g key={b.id}>
+              <rect
+                x={r.x}
+                y={r.z}
+                width={r.w}
+                height={r.d}
+                fill={b.dir === "out" ? "#b06a3a55" : "#15151a"}
+                stroke="#b06a3a"
+                strokeWidth={Math.max(L, W) / 400}
+              />
+              <text
+                x={r.x + r.w / 2}
+                y={r.z + r.d / 2}
+                fill="#e0a070"
+                fontSize={Math.max(L, W) / 70}
+                textAnchor="middle"
+                dominantBaseline="middle"
+              >
+                {b.label}
+              </text>
+            </g>
+          );
+        })}
+        {/* baseboard inner line */}
+        {project.room.baseboard && (
+          <rect
+            x={-L / 2 + project.room.baseboard.thickness}
+            y={-W / 2 + project.room.baseboard.thickness}
+            width={L - 2 * project.room.baseboard.thickness}
+            height={W - 2 * project.room.baseboard.thickness}
+            fill="none"
+            stroke="#6a6a72"
+            strokeDasharray={`${Math.max(L, W) / 90} ${Math.max(L, W) / 120}`}
+            strokeWidth={Math.max(L, W) / 500}
+          />
+        )}
         {/* runners (read-only) */}
         {project.runners.map((r) => {
           const Ly = runnerLayout(r, project.carcasses, project.catalog);

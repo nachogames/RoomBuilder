@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import type { Carcass, Project } from "../domain/types";
 import { buildCarcass } from "../geometry/carcass";
 import { buildRunner } from "../geometry/runner";
+import { roomReferenceSlabs } from "../domain/room";
 import type { Part, PartRole } from "../geometry/types";
 
 const ROLE_COLOR: Record<PartRole, string> = {
@@ -89,17 +90,36 @@ function RefBoxes({ project }: { project: Project }) {
 }
 
 function RoomShell({ project }: { project: Project }) {
-  const { length, width, ceilingHeight } = project.room;
+  const { length, width } = project.room;
+  const slabs = useMemo(
+    () => roomReferenceSlabs(project.room),
+    [project.room],
+  );
+  const COLOR = {
+    wall: "#3a6ea5",
+    bump: "#b06a3a",
+    baseboard: "#6a6a72",
+  } as const;
   return (
     <group>
-      <gridHelper args={[Math.max(length, width) * 1.5, 24, "#444", "#2a2a2a"]} />
-      <mesh
-        position={[0, ceilingHeight / 2, 0]}
-        renderOrder={-1}
-      >
-        <boxGeometry args={[length, ceilingHeight, width]} />
-        <meshBasicMaterial color="#3a6ea5" wireframe transparent opacity={0.25} />
-      </mesh>
+      <gridHelper
+        args={[Math.max(length, width) * 1.5, 24, "#444", "#2a2a2a"]}
+      />
+      {slabs.map((s) => (
+        <mesh
+          key={s.id}
+          position={[s.center.x, s.center.y, s.center.z]}
+          renderOrder={-1}
+        >
+          <boxGeometry args={[s.size.x, s.size.y, s.size.z]} />
+          <meshStandardMaterial
+            color={COLOR[s.kind]}
+            transparent
+            opacity={s.kind === "baseboard" ? 0.85 : 0.16}
+            side={2}
+          />
+        </mesh>
+      ))}
     </group>
   );
 }

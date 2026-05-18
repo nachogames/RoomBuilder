@@ -11,10 +11,12 @@ import {
   defaultBookcase,
   defaultRunner,
   defaultRefBox,
+  defaultBumpOut,
   deskAssembly,
   normalizeProject,
   uid,
 } from "../domain/defaults";
+import type { WallId } from "../domain/types";
 import { evenlySpacedShelves } from "../domain/shelves";
 import { buildProject } from "../geometry";
 import { buildCutList } from "../cutlist";
@@ -287,6 +289,156 @@ function Workspace({
               }))
             }
           />
+          <DimField
+            label="Wall thick"
+            value={project.room.wallThickness}
+            onChange={(v) =>
+              setProject((p) => ({
+                ...p,
+                room: { ...p.room, wallThickness: v },
+              }))
+            }
+          />
+          <label className="field">
+            <span>Baseboard</span>
+            <input
+              type="checkbox"
+              checked={!!project.room.baseboard}
+              onChange={(e) =>
+                setProject((p) => ({
+                  ...p,
+                  room: {
+                    ...p.room,
+                    baseboard: e.target.checked
+                      ? { height: 3.5, thickness: 0.5 }
+                      : null,
+                  },
+                }))
+              }
+            />
+          </label>
+          {project.room.baseboard && (
+            <>
+              <DimField
+                label="Base height"
+                value={project.room.baseboard.height}
+                onChange={(v) =>
+                  setProject((p) => ({
+                    ...p,
+                    room: {
+                      ...p.room,
+                      baseboard: { ...p.room.baseboard!, height: v },
+                    },
+                  }))
+                }
+              />
+              <DimField
+                label="Base thick"
+                value={project.room.baseboard.thickness}
+                onChange={(v) =>
+                  setProject((p) => ({
+                    ...p,
+                    room: {
+                      ...p.room,
+                      baseboard: { ...p.room.baseboard!, thickness: v },
+                    },
+                  }))
+                }
+              />
+            </>
+          )}
+
+          <div className="row">
+            <h3>Bump-outs</h3>
+            <button
+              onClick={() =>
+                setProject((p) => ({
+                  ...p,
+                  room: {
+                    ...p.room,
+                    bumpOuts: [...p.room.bumpOuts, defaultBumpOut("N")],
+                  },
+                }))
+              }
+            >
+              + Jut
+            </button>
+          </div>
+          {project.room.bumpOuts.map((b) => {
+            const patchB = (patch: Partial<typeof b>) =>
+              setProject((p) => ({
+                ...p,
+                room: {
+                  ...p.room,
+                  bumpOuts: p.room.bumpOuts.map((x) =>
+                    x.id === b.id ? { ...x, ...patch } : x,
+                  ),
+                },
+              }));
+            return (
+              <div key={b.id} className="sub">
+                <input
+                  className="proj-name"
+                  style={{ width: "100%" }}
+                  value={b.label}
+                  onChange={(e) => patchB({ label: e.target.value })}
+                />
+                <div className="row">
+                  <select
+                    value={b.wall}
+                    onChange={(e) =>
+                      patchB({ wall: e.target.value as WallId })
+                    }
+                  >
+                    {(["N", "S", "E", "W"] as WallId[]).map((w) => (
+                      <option key={w} value={w}>
+                        {w} wall
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={b.dir}
+                    onChange={(e) =>
+                      patchB({ dir: e.target.value as "out" | "in" })
+                    }
+                  >
+                    <option value="out">juts out</option>
+                    <option value="in">recess in</option>
+                  </select>
+                </div>
+                <StepField
+                  label="Offset"
+                  value={b.offset}
+                  onChange={(v) => patchB({ offset: v })}
+                />
+                <StepField
+                  label="Width"
+                  value={b.width}
+                  onChange={(v) => patchB({ width: v })}
+                />
+                <StepField
+                  label="Depth"
+                  value={b.depth}
+                  onChange={(v) => patchB({ depth: v })}
+                />
+                <button
+                  onClick={() =>
+                    setProject((p) => ({
+                      ...p,
+                      room: {
+                        ...p.room,
+                        bumpOuts: p.room.bumpOuts.filter(
+                          (x) => x.id !== b.id,
+                        ),
+                      },
+                    }))
+                  }
+                >
+                  Delete jut
+                </button>
+              </div>
+            );
+          })}
 
           <div className="row">
             <h3>Carcasses</h3>

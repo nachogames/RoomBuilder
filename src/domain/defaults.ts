@@ -69,6 +69,18 @@ export function defaultRunner(spanned: string[]): Runner {
   };
 }
 
+export function defaultBumpOut(wall: "N" | "S" | "E" | "W" = "N") {
+  return {
+    id: uid("bump"),
+    wall,
+    offset: 24,
+    width: 24,
+    depth: 12,
+    dir: "out" as const,
+    label: "Bump-out",
+  };
+}
+
 export function defaultRefBox(): RefBox {
   return {
     id: uid("box"),
@@ -118,7 +130,14 @@ export function defaultProject(): Project {
     name: "Untitled Room",
     units: "in",
     catalog: defaultCatalog(),
-    room: { length: 128, width: 120, ceilingHeight: 96 },
+    room: {
+      length: 128,
+      width: 120,
+      ceilingHeight: 96,
+      wallThickness: 4.5,
+      bumpOuts: [],
+      baseboard: { height: 3.5, thickness: 0.5 },
+    },
     carcasses: [defaultBookcase()],
     runners: [],
     refBoxes: [],
@@ -130,6 +149,15 @@ export function normalizeProject(p: Project): Project {
   return {
     ...p,
     units: p.units ?? "in",
+    room: {
+      ...p.room,
+      wallThickness: p.room.wallThickness ?? 4.5,
+      bumpOuts: p.room.bumpOuts ?? [],
+      baseboard:
+        p.room.baseboard === undefined
+          ? { height: 3.5, thickness: 0.5 }
+          : p.room.baseboard,
+    },
     runners: (p.runners ?? []).map((r) => ({
       ...r,
       nudge: r.nudge ?? { x: 0, z: 0 },

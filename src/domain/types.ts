@@ -38,10 +38,35 @@ export interface StockCatalog {
   kerf: Inches; // saw kerf, e.g. 0.125
 }
 
-export interface Room {
-  length: Inches;
+export type WallId = "N" | "S" | "E" | "W";
+
+/** A rectangular jog in a wall: `out` protrudes, `in` is a recess/alcove. */
+export interface BumpOut {
+  id: string;
+  wall: WallId;
+  /** distance from the wall's start corner to the near edge of the jog */
+  offset: Inches;
+  /** size along the wall */
   width: Inches;
+  /** how far it juts out / recesses in */
+  depth: Inches;
+  dir: "out" | "in";
+  label: string;
+}
+
+export interface Baseboard {
+  height: Inches;
+  thickness: Inches;
+}
+
+export interface Room {
+  length: Inches; // along X
+  width: Inches; // along Z
   ceilingHeight: Inches;
+  wallThickness: Inches;
+  bumpOuts: BumpOut[];
+  /** flat baseboard reference; null = none. Not counted in the cut list. */
+  baseboard: Baseboard | null;
 }
 
 export type ShelfAttachment = Extract<
