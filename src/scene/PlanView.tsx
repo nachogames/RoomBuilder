@@ -28,6 +28,7 @@ type Drag =
       start: Pt;
       nx: number;
       nz: number;
+      horiz: boolean; // edge is more horizontal than vertical
     }
   | { kind: "carcass" | "box"; id: string }
   | null;
@@ -137,23 +138,39 @@ export function PlanView({
         },
       }));
     } else if (drag.kind === "edge") {
-      // translate the whole edge along its perpendicular ("pull out"),
-      // snapped to 1/4" so the jut comes out square on clean numbers
-      const amt = snap(
-        (x - drag.start.x) * drag.nx + (z - drag.start.z) * drag.nz,
-      );
-      if (Math.abs(amt) > 0.2) movedRef.current = true;
-      const j = (drag.index + 1) % walls.length;
+      const d = drag;
+      const j = (d.index + 1) % walls.length;
+      let A: Pt;
+      let Bp: Pt;
+      if (ortho) {
+        // Ortho: the wall slides straight on ONE axis and stays perfectly
+        // axis-aligned (a horizontal wall moves in Z, a vertical wall in X).
+        if (d.horiz) {
+          const nz = snap(z);
+          A = { x: d.a0.x, z: nz };
+          Bp = { x: d.b0.x, z: nz };
+          if (Math.abs(nz - d.a0.z) > 0.2) movedRef.current = true;
+        } else {
+          const nx = snap(x);
+          A = { x: nx, z: d.a0.z };
+          Bp = { x: nx, z: d.b0.z };
+          if (Math.abs(nx - d.a0.x) > 0.2) movedRef.current = true;
+        }
+      } else {
+        // free: translate along the wall's own perpendicular
+        const amt = snap(
+          (x - d.start.x) * d.nx + (z - d.start.z) * d.nz,
+        );
+        if (Math.abs(amt) > 0.2) movedRef.current = true;
+        A = { x: d.a0.x + d.nx * amt, z: d.a0.z + d.nz * amt };
+        Bp = { x: d.b0.x + d.nx * amt, z: d.b0.z + d.nz * amt };
+      }
       setProject((pr) => ({
         ...pr,
         room: {
           ...pr.room,
           walls: pr.room.walls.map((p, i) =>
-            i === drag.index
-              ? { x: drag.a0.x + drag.nx * amt, z: drag.a0.z + drag.nz * amt }
-              : i === j
-                ? { x: drag.b0.x + drag.nx * amt, z: drag.b0.z + drag.nz * amt }
-                : p,
+            i === d.index ? A : i === j ? Bp : p,
           ),
         },
       }));
@@ -210,6 +227,7 @@ export function PlanView({
       start: projectOnSeg(a0, b0, rp),
       nx,
       nz,
+      horiz: Math.abs(b0.z - a0.z) <= Math.abs(b0.x - a0.x),
     });
   }
   function endDrag() {
@@ -237,11 +255,12 @@ export function PlanView({
   return (
     <div className="plan" ref={wrapRef}>
       <p className="label" style={{ padding: "8px 12px 0" }}>
-        <b>Drag a wall</b> to pull it in/out. <b>Click a wall</b> to drop a
-        breakpoint. With <b>Ortho 90° on</b>, dragging a corner stays
-        axis-aligned (no diagonal walls) — use the numeric <b>90° jut</b> tool
-        in the left panel for exact juts. Double-click a corner to remove it.
-        Drag cabinets/totes to place them.
+        <b>Grab a wall and drag</b> to move it. With <b>Ortho 90° on</b> the
+        wall stays perfectly straight and slides on one axis only (no
+        diagonals). <b>Click a wall</b> to drop a breakpoint; for an exact
+        jut use the numeric <b>90° jut</b> tool in the left panel.
+        Double-click a corner to remove it. Drag cabinets/totes to place
+        them.
         {room.baseboard && (
           <>
             {" "}
