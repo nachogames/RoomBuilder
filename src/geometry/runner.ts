@@ -28,9 +28,11 @@ export function runnerLayout(
   ]);
   const minLeft = Math.min(...intervals.map((i) => i[0]));
   const maxRight = Math.max(...intervals.map((i) => i[1]));
-  const worldLeft = minLeft - r.overhangEachEnd;
-  const worldRight = maxRight + r.overhangEachEnd;
-  const z = spanned[0]?.position.z ?? 0;
+  const nx = r.nudge?.x ?? 0;
+  const nz = r.nudge?.z ?? 0;
+  const worldLeft = minLeft - r.overhangEachEnd + nx;
+  const worldRight = maxRight + r.overhangEachEnd + nx;
+  const z = (spanned[0]?.position.z ?? 0) + nz;
   const thickness = materialThickness(catalog.materials, r.boardMaterialId);
   const supportXs = r.supports.map((s) => worldLeft + s.offsetFromLeft);
   return {

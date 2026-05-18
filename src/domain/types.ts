@@ -106,6 +106,8 @@ export interface Runner {
   overhangEachEnd: Inches;
   fastening: RunnerFastening;
   supports: Support[];
+  /** shift the whole runner relative to the carcasses it spans */
+  nudge: { x: Inches; z: Inches };
 }
 
 /** A plain reference object (e.g. a storage tote) for fit-checking only. */

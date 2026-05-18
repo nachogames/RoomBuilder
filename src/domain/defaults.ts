@@ -1,4 +1,5 @@
 import type { Carcass, Project, RefBox, Runner, StockCatalog } from "./types";
+import { evenlySpacedShelves } from "./shelves";
 
 export const PLY_34 = "ply-0.75";
 export const PLY_25 = "ply-0.25";
@@ -32,7 +33,7 @@ export function uid(prefix = "id"): string {
 }
 
 export function defaultBookcase(): Carcass {
-  return {
+  const base: Carcass = {
     id: uid("carcass"),
     label: "Bookcase",
     width: 20.75,
@@ -45,14 +46,12 @@ export function defaultBookcase(): Carcass {
     toeKickHeight: 3,
     carcassJoinery: "pocket-screw",
     targetOpeningWidth: 20.75,
-    shelves: [
-      { offsetFromBottom: 12, attachment: "pocket-screw" },
-      { offsetFromBottom: 26, attachment: "pocket-screw" },
-      { offsetFromBottom: 40, attachment: "pocket-screw" },
-    ],
+    shelves: [],
     position: { x: 0, z: 0 },
     rotationDeg: 0,
   };
+  base.shelves = evenlySpacedShelves(base, defaultCatalog(), 3, "pocket-screw");
+  return base;
 }
 
 export function defaultRunner(spanned: string[]): Runner {
@@ -66,6 +65,7 @@ export function defaultRunner(spanned: string[]): Runner {
     overhangEachEnd: 1,
     fastening: "pocket-screw",
     supports: [],
+    nudge: { x: 0, z: 0 },
   };
 }
 
@@ -90,15 +90,15 @@ export function deskAssembly(): { carcasses: Carcass[]; runner: Runner } {
     height: 28.5,
     depth: 22,
     targetOpeningWidth: undefined,
-    shelves: [{ offsetFromBottom: 12, attachment: "shelf-pin" }],
+    shelves: [],
     position: { x: -24, z: 0 },
   };
+  left.shelves = evenlySpacedShelves(left, defaultCatalog(), 1, "shelf-pin");
   const right: Carcass = {
     ...left,
     id: uid("carcass"),
     label: "Desk cabinet R",
     position: { x: 24, z: 0 },
-    shelves: [{ offsetFromBottom: 12, attachment: "shelf-pin" }],
   };
   const runner: Runner = {
     ...defaultRunner([left.id, right.id]),
@@ -130,7 +130,10 @@ export function normalizeProject(p: Project): Project {
   return {
     ...p,
     units: p.units ?? "in",
-    runners: p.runners ?? [],
+    runners: (p.runners ?? []).map((r) => ({
+      ...r,
+      nudge: r.nudge ?? { x: 0, z: 0 },
+    })),
     refBoxes: p.refBoxes ?? [],
   };
 }

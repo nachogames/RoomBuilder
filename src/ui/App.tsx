@@ -15,6 +15,7 @@ import {
   normalizeProject,
   uid,
 } from "../domain/defaults";
+import { evenlySpacedShelves } from "../domain/shelves";
 import { buildProject } from "../geometry";
 import { buildCutList } from "../cutlist";
 import { buildPocketPlan } from "../pockets/plan";
@@ -127,18 +128,31 @@ function Workspace({
 
   function setShelfCount(n: number) {
     if (!selected) return;
-    const count = Math.max(0, Math.min(20, Math.round(n)));
-    const t = project.catalog.materials.find(
-      (m) => m.id === selected.carcassMaterialId,
-    )!.thickness;
-    const interiorH = selected.height - selected.toeKickHeight - 2 * t;
     const attach = selected.shelves[0]?.attachment ?? "pocket-screw";
-    const shelves = Array.from({ length: count }, (_, i) => ({
-      offsetFromBottom:
-        Math.round(((interiorH * (i + 1)) / (count + 1)) * 16) / 16,
-      attachment: attach,
-    }));
-    patchSelected({ shelves });
+    patchSelected({
+      shelves: evenlySpacedShelves(
+        selected,
+        project.catalog,
+        n,
+        attach,
+      ),
+    });
+  }
+
+  function reflowShelves(patch: Partial<Carcass>) {
+    // re-even shelves whenever a dimension that affects spacing changes
+    if (!selected) return;
+    const next = { ...selected, ...patch };
+    const attach = selected.shelves[0]?.attachment ?? "pocket-screw";
+    patchSelected({
+      ...patch,
+      shelves: evenlySpacedShelves(
+        next,
+        project.catalog,
+        selected.shelves.length,
+        attach,
+      ),
+    });
   }
 
   function addBookcase() {
@@ -306,7 +320,7 @@ function Workspace({
               <DimField
                 label="Height"
                 value={selected.height}
-                onChange={(v) => patchSelected({ height: v })}
+                onChange={(v) => reflowShelves({ height: v })}
               />
               <DimField
                 label="Depth"
@@ -317,7 +331,7 @@ function Workspace({
                 label="Toe kick"
                 value={selected.toeKickHeight}
                 allowZero
-                onChange={(v) => patchSelected({ toeKickHeight: v })}
+                onChange={(v) => reflowShelves({ toeKickHeight: v })}
               />
               <DimField
                 label="Pos X"
@@ -328,6 +342,23 @@ function Workspace({
                     position: { ...selected.position, x: v },
                   })
                 }
+              />
+              <DimField
+                label="Pos Z"
+                value={selected.position.z}
+                allowZero
+                onChange={(v) =>
+                  patchSelected({
+                    position: { ...selected.position, z: v },
+                  })
+                }
+              />
+              <NumField
+                label="Rotation°"
+                value={selected.rotationDeg}
+                step={15}
+                min={-360}
+                onChange={(v) => patchSelected({ rotationDeg: v })}
               />
               <DimField
                 label="Target opening"
@@ -439,6 +470,43 @@ function Workspace({
                 options={RUNNER_FASTEN}
                 onChange={(v) => patchRunner(r.id, { fastening: v })}
               />
+              <DimField
+                label="Nudge X"
+                value={r.nudge.x}
+                allowZero
+                onChange={(v) =>
+                  patchRunner(r.id, { nudge: { ...r.nudge, x: v } })
+                }
+              />
+              <DimField
+                label="Nudge Z"
+                value={r.nudge.z}
+                allowZero
+                onChange={(v) =>
+                  patchRunner(r.id, { nudge: { ...r.nudge, z: v } })
+                }
+              />
+              <div className="label" style={{ margin: "6px 0 2px" }}>
+                Sits on:
+              </div>
+              {project.carcasses.map((c) => (
+                <label key={c.id} className="field">
+                  <span>{c.label}</span>
+                  <input
+                    type="checkbox"
+                    checked={r.spannedCarcassIds.includes(c.id)}
+                    onChange={(e) =>
+                      patchRunner(r.id, {
+                        spannedCarcassIds: e.target.checked
+                          ? [...r.spannedCarcassIds, c.id]
+                          : r.spannedCarcassIds.filter(
+                              (id) => id !== c.id,
+                            ),
+                      })
+                    }
+                  />
+                </label>
+              ))}
               <div className="row">
                 <span className="label">
                   Spans {r.spannedCarcassIds.length} / supports{" "}
@@ -542,6 +610,24 @@ function Workspace({
                       ...p,
                       refBoxes: p.refBoxes.map((x) =>
                         x.id === b.id ? { ...x, [k]: v } : x,
+                      ),
+                    }))
+                  }
+                />
+              ))}
+              {(["x", "z"] as const).map((k) => (
+                <DimField
+                  key={k}
+                  label={`Pos ${k.toUpperCase()}`}
+                  value={b.position[k]}
+                  allowZero
+                  onChange={(v) =>
+                    setProject((p) => ({
+                      ...p,
+                      refBoxes: p.refBoxes.map((x) =>
+                        x.id === b.id
+                          ? { ...x, position: { ...x.position, [k]: v } }
+                          : x,
                       ),
                     }))
                   }
