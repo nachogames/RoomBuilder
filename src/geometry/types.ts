@@ -7,7 +7,9 @@ export type PartRole =
   | "bottom"
   | "toe-kick"
   | "back"
-  | "shelf";
+  | "shelf"
+  | "runner"
+  | "support";
 
 /**
  * One physical piece. `length >= width` by convention (long dimension first).
@@ -25,6 +27,8 @@ export interface Part {
   grainMatters: boolean;
   box: { x: Inches; y: Inches; z: Inches };
   center: { x: Inches; y: Inches; z: Inches };
+  /** when true, `center` is room/world coords (not carcass-local) */
+  world?: boolean;
 }
 
 export interface JointMember {

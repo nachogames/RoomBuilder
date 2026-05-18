@@ -1,20 +1,30 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Carcass, Project, ShelfAttachment } from "../domain/types";
-import { defaultProject, defaultBookcase, uid } from "../domain/defaults";
-import { buildAll } from "../geometry/carcass";
+import type {
+  Carcass,
+  Project,
+  Runner,
+  ShelfAttachment,
+  SupportKind,
+} from "../domain/types";
+import {
+  defaultProject,
+  defaultBookcase,
+  defaultRunner,
+  defaultRefBox,
+  deskAssembly,
+  normalizeProject,
+  uid,
+} from "../domain/defaults";
+import { buildProject } from "../geometry";
 import { buildCutList } from "../cutlist";
 import { buildPocketPlan } from "../pockets/plan";
 import { buildBom } from "../bom/aggregate";
 import { checkCarcass, worstLevel } from "../domain/checks";
-import { formatInches } from "../domain/units";
+import { checkRunnerSag } from "../domain/sag";
 import { Scene } from "../scene/Scene";
 import { DimField, NumField, SelectField } from "./fields";
-import {
-  bomCsv,
-  cutListCsv,
-  downloadText,
-  pocketCsv,
-} from "../report/csv";
+import { UnitsProvider, useUnits } from "./units";
+import { bomCsv, cutListCsv, downloadText, pocketCsv } from "../report/csv";
 import {
   exportProjectJson,
   importProjectJson,
@@ -31,11 +41,35 @@ const SHELF_ATTACH: readonly ShelfAttachment[] = [
   "dado",
 ];
 const CARCASS_JOIN = ["pocket-screw", "dado", "screw-through"] as const;
+const RUNNER_FASTEN = ["pocket-screw", "screw-through", "bracket"] as const;
+const SUPPORT_KINDS: readonly SupportKind[] = [
+  "corbel",
+  "bracket",
+  "leg",
+  "cleat",
+];
 type Tab = "3D" | "Cut list" | "Pocket plan" | "Materials";
 
 export default function App() {
   const [project, setProject] = useState<Project>(() => defaultProject());
-  const [selId, setSelId] = useState<string>(project.carcasses[0].id);
+  return (
+    <UnitsProvider units={project.units}>
+      <Workspace project={project} setProject={setProject} />
+    </UnitsProvider>
+  );
+}
+
+function Workspace({
+  project,
+  setProject,
+}: {
+  project: Project;
+  setProject: React.Dispatch<React.SetStateAction<Project>>;
+}) {
+  const { fmt } = useUnits();
+  const [selId, setSelId] = useState<string>(
+    project.carcasses[0]?.id ?? "",
+  );
   const [tab, setTab] = useState<Tab>("3D");
   const [savedNames, setSavedNames] = useState<string[]>([]);
   const [status, setStatus] = useState("");
@@ -45,19 +79,21 @@ export default function App() {
     project.carcasses.find((c) => c.id === selId) ?? project.carcasses[0];
 
   const derived = useMemo(() => {
-    const g = buildAll(project.carcasses, project.catalog);
+    const g = buildProject(project);
     const cutList = buildCutList(g.parts, project.catalog);
     const pocketPlan = buildPocketPlan(g.joints, g.parts, project.catalog);
     const bom = buildBom(g.joints, cutList, pocketPlan);
     return { ...g, cutList, pocketPlan, bom };
   }, [project]);
 
-  const checks = useMemo(
-    () => project.carcasses.flatMap((c) => checkCarcass(c, project)),
-    [project],
-  );
+  const checks = useMemo(() => {
+    const cc = project.carcasses.flatMap((c) => checkCarcass(c, project));
+    const rc = project.runners.map((r) =>
+      checkRunnerSag(r, project.carcasses, project.catalog),
+    );
+    return [...cc, ...rc];
+  }, [project]);
 
-  // autosave (debounced) to IndexedDB
   useEffect(() => {
     const t = setTimeout(() => {
       saveProject(project)
@@ -73,6 +109,7 @@ export default function App() {
   }, []);
 
   function patchSelected(patch: Partial<Carcass>) {
+    if (!selected) return;
     setProject((p) => ({
       ...p,
       carcasses: p.carcasses.map((c) =>
@@ -81,31 +118,56 @@ export default function App() {
     }));
   }
 
+  function patchRunner(id: string, patch: Partial<Runner>) {
+    setProject((p) => ({
+      ...p,
+      runners: p.runners.map((r) => (r.id === id ? { ...r, ...patch } : r)),
+    }));
+  }
+
   function setShelfCount(n: number) {
+    if (!selected) return;
     const count = Math.max(0, Math.min(20, Math.round(n)));
-    const interiorH =
-      selected.height -
-      selected.toeKickHeight -
-      2 * project.catalog.materials.find((m) => m.id === selected.carcassMaterialId)!
-        .thickness;
+    const t = project.catalog.materials.find(
+      (m) => m.id === selected.carcassMaterialId,
+    )!.thickness;
+    const interiorH = selected.height - selected.toeKickHeight - 2 * t;
     const attach = selected.shelves[0]?.attachment ?? "pocket-screw";
     const shelves = Array.from({ length: count }, (_, i) => ({
-      offsetFromBottom: Math.round(((interiorH * (i + 1)) / (count + 1)) * 16) / 16,
+      offsetFromBottom:
+        Math.round(((interiorH * (i + 1)) / (count + 1)) * 16) / 16,
       attachment: attach,
     }));
     patchSelected({ shelves });
   }
 
-  function setShelfAttachment(a: ShelfAttachment) {
-    patchSelected({
-      shelves: selected.shelves.map((s) => ({ ...s, attachment: a })),
-    });
-  }
-
   function addBookcase() {
-    const c = { ...defaultBookcase(), id: uid("carcass"), position: { x: 0, z: 0 } };
+    const c = {
+      ...defaultBookcase(),
+      id: uid("carcass"),
+      position: { x: 0, z: 0 },
+    };
     setProject((p) => ({ ...p, carcasses: [...p.carcasses, c] }));
     setSelId(c.id);
+  }
+
+  function addRunner() {
+    if (project.carcasses.length === 0) return;
+    const r = defaultRunner(project.carcasses.map((c) => c.id));
+    setProject((p) => ({ ...p, runners: [...p.runners, r] }));
+  }
+
+  function addDesk() {
+    const { carcasses, runner } = deskAssembly();
+    setProject((p) => ({
+      ...p,
+      carcasses: [...p.carcasses, ...carcasses],
+      runners: [...p.runners, runner],
+    }));
+  }
+
+  function addTote() {
+    setProject((p) => ({ ...p, refBoxes: [...p.refBoxes, defaultRefBox()] }));
   }
 
   const overall = worstLevel(checks);
@@ -121,8 +183,23 @@ export default function App() {
             setProject((p) => ({ ...p, name: e.target.value }))
           }
         />
+        <button
+          onClick={() =>
+            setProject((p) => ({
+              ...p,
+              units: p.units === "in" ? "mm" : "in",
+            }))
+          }
+          title="Toggle units"
+        >
+          {project.units === "in" ? 'inches' : 'mm'}
+        </button>
         <div className="spacer" />
-        <button onClick={() => saveProjectToDisk(project).then((m) => setStatus(`Saved to ${m}`))}>
+        <button
+          onClick={() =>
+            saveProjectToDisk(project).then((m) => setStatus(`Saved to ${m}`))
+          }
+        >
           Save to disk
         </button>
         <button onClick={() => exportProjectJson(project)}>Export JSON</button>
@@ -151,7 +228,7 @@ export default function App() {
             if (e.target.value)
               loadProject(e.target.value).then((p) => {
                 if (p) {
-                  setProject(p);
+                  setProject(normalizeProject(p));
                   setSelId(p.carcasses[0]?.id ?? "");
                 }
               });
@@ -198,72 +275,290 @@ export default function App() {
 
           <div className="row">
             <h3>Carcasses</h3>
-            <button onClick={addBookcase}>+ Add</button>
+            <span>
+              <button onClick={addBookcase}>+ Case</button>{" "}
+              <button onClick={addDesk}>+ Desk</button>
+            </span>
           </div>
-          <select
-            value={selected.id}
-            onChange={(e) => setSelId(e.target.value)}
-          >
-            {project.carcasses.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.label}
-              </option>
-            ))}
-          </select>
+          {selected && (
+            <>
+              <select
+                value={selected.id}
+                onChange={(e) => setSelId(e.target.value)}
+              >
+                {project.carcasses.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
+              <input
+                className="proj-name"
+                style={{ width: "100%", marginTop: 6 }}
+                value={selected.label}
+                onChange={(e) => patchSelected({ label: e.target.value })}
+              />
+              <DimField
+                label="Width"
+                value={selected.width}
+                onChange={(v) => patchSelected({ width: v })}
+              />
+              <DimField
+                label="Height"
+                value={selected.height}
+                onChange={(v) => patchSelected({ height: v })}
+              />
+              <DimField
+                label="Depth"
+                value={selected.depth}
+                onChange={(v) => patchSelected({ depth: v })}
+              />
+              <DimField
+                label="Toe kick"
+                value={selected.toeKickHeight}
+                allowZero
+                onChange={(v) => patchSelected({ toeKickHeight: v })}
+              />
+              <DimField
+                label="Pos X"
+                value={selected.position.x}
+                allowZero
+                onChange={(v) =>
+                  patchSelected({
+                    position: { ...selected.position, x: v },
+                  })
+                }
+              />
+              <DimField
+                label="Target opening"
+                value={selected.targetOpeningWidth ?? 0}
+                allowZero
+                onChange={(v) =>
+                  patchSelected({
+                    targetOpeningWidth: v > 0 ? v : undefined,
+                  })
+                }
+              />
+              <NumField
+                label="Shelves"
+                value={selected.shelves.length}
+                onChange={setShelfCount}
+                min={0}
+              />
+              <SelectField
+                label="Shelf joinery"
+                value={selected.shelves[0]?.attachment ?? "pocket-screw"}
+                options={SHELF_ATTACH}
+                onChange={(a) =>
+                  patchSelected({
+                    shelves: selected.shelves.map((s) => ({
+                      ...s,
+                      attachment: a,
+                    })),
+                  })
+                }
+              />
+              <SelectField
+                label="Carcass joinery"
+                value={selected.carcassJoinery}
+                options={CARCASS_JOIN}
+                onChange={(v) => patchSelected({ carcassJoinery: v })}
+              />
+              <label className="field">
+                <span>Has back</span>
+                <input
+                  type="checkbox"
+                  checked={selected.hasBack}
+                  onChange={(e) =>
+                    patchSelected({ hasBack: e.target.checked })
+                  }
+                />
+              </label>
+              <button
+                onClick={() => {
+                  setProject((p) => ({
+                    ...p,
+                    carcasses: p.carcasses.filter(
+                      (c) => c.id !== selected.id,
+                    ),
+                    runners: p.runners.map((r) => ({
+                      ...r,
+                      spannedCarcassIds: r.spannedCarcassIds.filter(
+                        (id) => id !== selected.id,
+                      ),
+                    })),
+                  }));
+                }}
+              >
+                Delete carcass
+              </button>
+            </>
+          )}
 
-          <DimField
-            label="Width"
-            value={selected.width}
-            onChange={(v) => patchSelected({ width: v })}
-          />
-          <DimField
-            label="Height"
-            value={selected.height}
-            onChange={(v) => patchSelected({ height: v })}
-          />
-          <DimField
-            label="Depth"
-            value={selected.depth}
-            onChange={(v) => patchSelected({ depth: v })}
-          />
-          <DimField
-            label="Toe kick"
-            value={selected.toeKickHeight}
-            onChange={(v) => patchSelected({ toeKickHeight: v })}
-          />
-          <DimField
-            label="Target opening"
-            value={selected.targetOpeningWidth ?? 0}
-            onChange={(v) =>
-              patchSelected({ targetOpeningWidth: v > 0 ? v : undefined })
-            }
-          />
-          <NumField
-            label="Shelves"
-            value={selected.shelves.length}
-            onChange={setShelfCount}
-            min={0}
-          />
-          <SelectField
-            label="Shelf joinery"
-            value={selected.shelves[0]?.attachment ?? "pocket-screw"}
-            options={SHELF_ATTACH}
-            onChange={setShelfAttachment}
-          />
-          <SelectField
-            label="Carcass joinery"
-            value={selected.carcassJoinery}
-            options={CARCASS_JOIN}
-            onChange={(v) => patchSelected({ carcassJoinery: v })}
-          />
-          <label className="field">
-            <span>Has back</span>
-            <input
-              type="checkbox"
-              checked={selected.hasBack}
-              onChange={(e) => patchSelected({ hasBack: e.target.checked })}
-            />
-          </label>
+          <div className="row">
+            <h3>Runners</h3>
+            <button onClick={addRunner}>+ Runner</button>
+          </div>
+          {project.runners.map((r) => (
+            <div key={r.id} className="sub">
+              <input
+                className="proj-name"
+                style={{ width: "100%" }}
+                value={r.label}
+                onChange={(e) =>
+                  patchRunner(r.id, { label: e.target.value })
+                }
+              />
+              <SelectField
+                label="Board"
+                value={r.boardMaterialId}
+                options={project.catalog.materials.map((m) => m.id)}
+                onChange={(v) => patchRunner(r.id, { boardMaterialId: v })}
+              />
+              <DimField
+                label="Top height"
+                value={r.bottomHeight}
+                onChange={(v) => patchRunner(r.id, { bottomHeight: v })}
+              />
+              <DimField
+                label="Depth"
+                value={r.depth}
+                onChange={(v) => patchRunner(r.id, { depth: v })}
+              />
+              <DimField
+                label="Overhang"
+                value={r.overhangEachEnd}
+                allowZero
+                onChange={(v) =>
+                  patchRunner(r.id, { overhangEachEnd: v })
+                }
+              />
+              <SelectField
+                label="Fastening"
+                value={r.fastening}
+                options={RUNNER_FASTEN}
+                onChange={(v) => patchRunner(r.id, { fastening: v })}
+              />
+              <div className="row">
+                <span className="label">
+                  Spans {r.spannedCarcassIds.length} / supports{" "}
+                  {r.supports.length}
+                </span>
+                <button
+                  onClick={() =>
+                    patchRunner(r.id, {
+                      supports: [
+                        ...r.supports,
+                        {
+                          id: uid("sup"),
+                          kind: "leg",
+                          offsetFromLeft: 24,
+                        },
+                      ],
+                    })
+                  }
+                >
+                  + Support
+                </button>
+              </div>
+              {r.supports.map((s, i) => (
+                <div key={s.id} className="row">
+                  <select
+                    value={s.kind}
+                    onChange={(e) =>
+                      patchRunner(r.id, {
+                        supports: r.supports.map((x) =>
+                          x.id === s.id
+                            ? {
+                                ...x,
+                                kind: e.target.value as SupportKind,
+                              }
+                            : x,
+                        ),
+                      })
+                    }
+                  >
+                    {SUPPORT_KINDS.map((k) => (
+                      <option key={k} value={k}>
+                        {k}
+                      </option>
+                    ))}
+                  </select>
+                  <DimField
+                    label={`#${i + 1} @`}
+                    value={s.offsetFromLeft}
+                    allowZero
+                    onChange={(v) =>
+                      patchRunner(r.id, {
+                        supports: r.supports.map((x) =>
+                          x.id === s.id
+                            ? { ...x, offsetFromLeft: v }
+                            : x,
+                        ),
+                      })
+                    }
+                  />
+                </div>
+              ))}
+              <button
+                onClick={() =>
+                  setProject((p) => ({
+                    ...p,
+                    runners: p.runners.filter((x) => x.id !== r.id),
+                  }))
+                }
+              >
+                Delete runner
+              </button>
+            </div>
+          ))}
+
+          <div className="row">
+            <h3>Reference</h3>
+            <button onClick={addTote}>+ Tote</button>
+          </div>
+          {project.refBoxes.map((b) => (
+            <div key={b.id} className="sub">
+              <input
+                className="proj-name"
+                style={{ width: "100%" }}
+                value={b.label}
+                onChange={(e) =>
+                  setProject((p) => ({
+                    ...p,
+                    refBoxes: p.refBoxes.map((x) =>
+                      x.id === b.id ? { ...x, label: e.target.value } : x,
+                    ),
+                  }))
+                }
+              />
+              {(["width", "height", "depth"] as const).map((k) => (
+                <DimField
+                  key={k}
+                  label={k}
+                  value={b[k]}
+                  onChange={(v) =>
+                    setProject((p) => ({
+                      ...p,
+                      refBoxes: p.refBoxes.map((x) =>
+                        x.id === b.id ? { ...x, [k]: v } : x,
+                      ),
+                    }))
+                  }
+                />
+              ))}
+              <button
+                onClick={() =>
+                  setProject((p) => ({
+                    ...p,
+                    refBoxes: p.refBoxes.filter((x) => x.id !== b.id),
+                  }))
+                }
+              >
+                Delete tote
+              </button>
+            </div>
+          ))}
         </aside>
 
         <main className="view">
@@ -292,7 +587,10 @@ export default function App() {
             {tab === "Pocket plan" && (
               <button
                 onClick={() =>
-                  downloadText("pocket-plan.csv", pocketCsv(derived.pocketPlan))
+                  downloadText(
+                    "pocket-plan.csv",
+                    pocketCsv(derived.pocketPlan),
+                  )
                 }
               >
                 Export CSV
@@ -300,7 +598,9 @@ export default function App() {
             )}
             {tab === "Materials" && (
               <button
-                onClick={() => downloadText("materials.csv", bomCsv(derived.bom))}
+                onClick={() =>
+                  downloadText("materials.csv", bomCsv(derived.bom))
+                }
               >
                 Export CSV
               </button>
@@ -311,7 +611,11 @@ export default function App() {
             <div className={`checks ${overall}`}>
               {checks.map((c, i) => (
                 <div key={i} className={c.level}>
-                  {c.level === "error" ? "⛔" : c.level === "warn" ? "⚠️" : "✅"}{" "}
+                  {c.level === "error"
+                    ? "⛔"
+                    : c.level === "warn"
+                      ? "⚠️"
+                      : "✅"}{" "}
                   {c.message}
                 </div>
               ))}
@@ -347,8 +651,8 @@ export default function App() {
                               {b.placements.map((pl, k) => (
                                 <tr key={k}>
                                   <td>{pl.label}</td>
-                                  <td>{formatInches(pl.w)}</td>
-                                  <td>{formatInches(pl.h)}</td>
+                                  <td>{fmt(pl.w)}</td>
+                                  <td>{fmt(pl.h)}</td>
                                 </tr>
                               ))}
                             </tbody>
@@ -360,7 +664,7 @@ export default function App() {
                               <tr>
                                 <th>
                                   {b.nominal} #{i + 1} (leftover{" "}
-                                  {formatInches(b.leftover)})
+                                  {fmt(b.leftover)})
                                 </th>
                                 <th>Length</th>
                               </tr>
@@ -369,7 +673,7 @@ export default function App() {
                               {b.cuts.map((c, k) => (
                                 <tr key={k}>
                                   <td>{c.label}</td>
-                                  <td>{formatInches(c.length)}</td>
+                                  <td>{fmt(c.length)}</td>
                                 </tr>
                               ))}
                             </tbody>
@@ -400,10 +704,9 @@ export default function App() {
                         <td>{e.drilledPartLabel}</td>
                         <td>{e.holes}</td>
                         <td>{e.setting.guideSetting}</td>
-                        <td>{formatInches(e.setting.collarDepth)}</td>
+                        <td>{fmt(e.setting.collarDepth)}</td>
                         <td>
-                          {formatInches(e.setting.screwLength)}{" "}
-                          {e.setting.screwType}
+                          {fmt(e.setting.screwLength)} {e.setting.screwType}
                         </td>
                       </tr>
                     ))}

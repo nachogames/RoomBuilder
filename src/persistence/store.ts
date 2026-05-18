@@ -1,4 +1,5 @@
 import type { Project } from "../domain/types";
+import { normalizeProject } from "../domain/defaults";
 import { downloadText } from "../report/csv";
 
 const DB = "roombuilder";
@@ -43,7 +44,8 @@ export async function loadProject(name: string): Promise<Project | null> {
   const p = await new Promise<Project | null>((resolve, reject) => {
     const tx = db.transaction(STORE, "readonly");
     const req = tx.objectStore(STORE).get(name);
-    req.onsuccess = () => resolve((req.result as Project) ?? null);
+    req.onsuccess = () =>
+      resolve(req.result ? normalizeProject(req.result as Project) : null);
     req.onerror = () => reject(req.error);
   });
   db.close();
@@ -62,7 +64,7 @@ export async function importProjectJson(file: File): Promise<Project> {
   const text = await file.text();
   const p = JSON.parse(text) as Project;
   if (p.schemaVersion !== 1) throw new Error("Unsupported project version");
-  return p;
+  return normalizeProject(p);
 }
 
 interface FsWindow {

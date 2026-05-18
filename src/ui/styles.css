@@ -54,3 +54,7 @@ th { color: #9a9aa6; font-weight: 600; }
 .checks .warn { color: #ffd27a; }
 .checks .ok { color: #8ae0a0; }
 footer { padding: 6px 12px; color: #888; background: #1d1d22; border-top: 1px solid #2c2c33; min-height: 26px; }
+.sub { border: 1px solid #2c2c33; border-radius: 8px; padding: 8px; margin: 8px 0; background: #15151a; }
+.sub button { margin-top: 6px; }
+.label { color: #9a9aa6; font-size: 12px; }
+.panel .row span button { font-size: 12px; padding: 3px 7px; }

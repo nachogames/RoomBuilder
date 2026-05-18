@@ -77,10 +77,56 @@ export interface Carcass {
   rotationDeg: number;
 }
 
+export type SupportKind = "corbel" | "bracket" | "leg" | "cleat";
+
+export interface Support {
+  id: string;
+  kind: SupportKind;
+  /** position along the runner, inches from the runner's left end */
+  offsetFromLeft: Inches;
+}
+
+export type RunnerFastening = Extract<
+  JoineryMethod,
+  "pocket-screw" | "screw-through" | "bracket"
+>;
+
+/** A board spanning one or more carcasses (e.g. a 2x12 across two bookcases). */
+export interface Runner {
+  id: string;
+  label: string;
+  boardMaterialId: string;
+  /** ids of carcasses this runner bears on, left-to-right */
+  spannedCarcassIds: string[];
+  /** underside height above the floor */
+  bottomHeight: Inches;
+  /** depth (front-to-back) of the runner board */
+  depth: Inches;
+  /** horizontal overhang past the outer carcasses, each end */
+  overhangEachEnd: Inches;
+  fastening: RunnerFastening;
+  supports: Support[];
+}
+
+/** A plain reference object (e.g. a storage tote) for fit-checking only. */
+export interface RefBox {
+  id: string;
+  label: string;
+  width: Inches;
+  height: Inches;
+  depth: Inches;
+  position: { x: Inches; z: Inches };
+}
+
+export type Units = "in" | "mm";
+
 export interface Project {
   schemaVersion: 1;
   name: string;
+  units: Units;
   catalog: StockCatalog;
   room: Room;
   carcasses: Carcass[];
+  runners: Runner[];
+  refBoxes: RefBox[];
 }

@@ -1,17 +1,20 @@
 import { useState } from "react";
-import { formatInches, parseInches } from "../domain/units";
+import { useUnits } from "./units";
 
 export function DimField({
   label,
   value,
   onChange,
+  allowZero = false,
 }: {
   label: string;
   value: number;
   onChange: (v: number) => void;
+  allowZero?: boolean;
 }) {
+  const { fmt, parse } = useUnits();
   const [draft, setDraft] = useState<string | null>(null);
-  const shown = draft ?? formatInches(value).replace(/"$/, "");
+  const shown = draft ?? fmt(value).replace(/"$/, "").replace(/ mm$/, "");
   return (
     <label className="field">
       <span>{label}</span>
@@ -20,8 +23,8 @@ export function DimField({
         onChange={(e) => setDraft(e.target.value)}
         onBlur={() => {
           if (draft != null) {
-            const n = parseInches(draft);
-            if (n != null && n > 0) onChange(n);
+            const n = parse(draft);
+            if (n != null && (n > 0 || (allowZero && n >= 0))) onChange(n);
             setDraft(null);
           }
         }}

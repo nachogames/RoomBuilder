@@ -3,6 +3,7 @@ import { OrbitControls, GizmoHelper, GizmoViewport } from "@react-three/drei";
 import { useMemo } from "react";
 import type { Carcass, Project } from "../domain/types";
 import { buildCarcass } from "../geometry/carcass";
+import { buildRunner } from "../geometry/runner";
 import type { Part, PartRole } from "../geometry/types";
 
 const ROLE_COLOR: Record<PartRole, string> = {
@@ -12,6 +13,8 @@ const ROLE_COLOR: Record<PartRole, string> = {
   "toe-kick": "#b9975b",
   back: "#9c8157",
   shelf: "#e3cda0",
+  runner: "#caa46a",
+  support: "#8a6f44",
 };
 
 function PartMesh({ part }: { part: Part }) {
@@ -43,6 +46,45 @@ function CarcassGroup({
         <PartMesh key={p.id} part={p} />
       ))}
     </group>
+  );
+}
+
+function RunnerMeshes({ project }: { project: Project }) {
+  const parts = useMemo(() => {
+    const out: Part[] = [];
+    for (const r of project.runners) {
+      out.push(
+        ...buildRunner(r, project.carcasses, project.catalog).parts,
+      );
+    }
+    return out;
+  }, [project]);
+  return (
+    <>
+      {parts.map((p) => (
+        <PartMesh key={p.id} part={p} />
+      ))}
+    </>
+  );
+}
+
+function RefBoxes({ project }: { project: Project }) {
+  return (
+    <>
+      {project.refBoxes.map((b) => (
+        <mesh
+          key={b.id}
+          position={[b.position.x, b.height / 2, b.position.z]}
+        >
+          <boxGeometry args={[b.width, b.height, b.depth]} />
+          <meshStandardMaterial
+            color="#5fa8d3"
+            transparent
+            opacity={0.45}
+          />
+        </mesh>
+      ))}
+    </>
   );
 }
 
@@ -80,6 +122,8 @@ export function Scene({ project }: { project: Project }) {
       {project.carcasses.map((c) => (
         <CarcassGroup key={c.id} carcass={c} project={project} />
       ))}
+      <RunnerMeshes project={project} />
+      <RefBoxes project={project} />
       <OrbitControls makeDefault target={[0, project.room.ceilingHeight / 3, 0]} />
       <GizmoHelper alignment="bottom-right" margin={[64, 64]}>
         <GizmoViewport labelColor="white" axisHeadScale={1} />
