@@ -67,6 +67,17 @@ describe("buildCutList (default bookcase, mixed materials)", () => {
     expect(cl.totalStock).toBeGreaterThanOrEqual(1);
   });
 
+  it("includes the 72\" side panels (regression: long parts not dropped)", () => {
+    const cat = defaultCatalog();
+    const g = buildCarcass(defaultBookcase(), cat);
+    const cl = buildCutList(g.parts, cat);
+    for (const m of cl.byMaterial) expect(m.oversize).toHaveLength(0);
+    const placed = cl.byMaterial
+      .flatMap((m) => m.sheetBins)
+      .flatMap((b) => b.placements.map((p) => p.label));
+    expect(placed.filter((l) => l.includes("side"))).toHaveLength(2);
+  });
+
   it("handles a lumber shelf via the board packer", () => {
     const c = defaultBookcase();
     c.shelfMaterialId = PINE_1x12;

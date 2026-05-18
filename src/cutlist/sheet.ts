@@ -31,16 +31,19 @@ export function packSheets(
   const oversize: Part[] = [];
   type Piece = { p: Part; w: number; h: number; rotated: boolean };
   const pieces: Piece[] = [];
+  // Sheet length (y axis) is the grain direction; a part's `length` is its
+  // with-grain dimension and must run along the sheet length when grain
+  // matters. When grain is irrelevant either orientation is allowed.
   for (const p of parts) {
-    const fitsNormal = p.length <= sheetWidth && p.width <= sheetLength;
-    const fitsRot =
-      !p.grainMatters && p.width <= sheetWidth && p.length <= sheetLength;
-    if (!fitsNormal && !fitsRot) {
+    const grainFit = p.length <= sheetLength && p.width <= sheetWidth;
+    const crossFit = p.width <= sheetLength && p.length <= sheetWidth;
+    if (grainFit) {
+      pieces.push({ p, w: p.width, h: p.length, rotated: false });
+    } else if (!p.grainMatters && crossFit) {
+      pieces.push({ p, w: p.length, h: p.width, rotated: true });
+    } else {
       oversize.push(p);
-      continue;
     }
-    // orient so the wider dimension is the shelf height to pack rows well
-    pieces.push({ p, w: p.length, h: p.width, rotated: false });
   }
   pieces.sort((a, b) => b.h - a.h || b.w - a.w);
 
