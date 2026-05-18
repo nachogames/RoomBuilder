@@ -23,6 +23,9 @@ type Drag =
   | { kind: "carcass" | "box"; id: string }
   | null;
 
+/** Snap to a clean 1/4" so freehand wall edits land square. */
+const snap = (v: number) => Math.round(v / 0.25) * 0.25;
+
 function projectOnSeg(a: Pt, b: Pt, p: Pt) {
   const dx = b.x - a.x;
   const dz = b.z - a.z;
@@ -102,18 +105,23 @@ export function PlanView({
     const { x, z } = rp;
     if (drag.kind === "corner") {
       movedRef.current = true;
+      const sx = snap(x);
+      const sz = snap(z);
       setProject((pr) => ({
         ...pr,
         room: {
           ...pr.room,
           walls: pr.room.walls.map((p, i) =>
-            i === drag.index ? { x, z } : p,
+            i === drag.index ? { x: sx, z: sz } : p,
           ),
         },
       }));
     } else if (drag.kind === "edge") {
-      // translate the whole edge along its perpendicular ("pull out")
-      const amt = (x - drag.start.x) * drag.nx + (z - drag.start.z) * drag.nz;
+      // translate the whole edge along its perpendicular ("pull out"),
+      // snapped to 1/4" so the jut comes out square on clean numbers
+      const amt = snap(
+        (x - drag.start.x) * drag.nx + (z - drag.start.z) * drag.nz,
+      );
       if (Math.abs(amt) > 0.2) movedRef.current = true;
       const j = (drag.index + 1) % walls.length;
       setProject((pr) => ({

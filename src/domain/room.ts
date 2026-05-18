@@ -53,6 +53,55 @@ export function setWallLength(
   );
 }
 
+/**
+ * Insert a perfectly square (90°) rectangular jut into wall `edgeIndex`.
+ * `offA`/`offB` are distances from the edge's START corner along the wall;
+ * `depth` is how far the jut face sits off the wall. `dir` "out" pushes away
+ * from the room centroid, "in" carves a recess. Pure.
+ *
+ * Resulting corners along the edge A→B:
+ *   A → P1 → Q1 → Q2 → P2 → B
+ * with P1/P2 on the original wall and Q1/Q2 the offset jut face, so every
+ * new corner is exactly 90°.
+ */
+export function addJut(
+  walls: Pt[],
+  edgeIndex: number,
+  offA: number,
+  offB: number,
+  depth: number,
+  dir: "out" | "in",
+): Pt[] {
+  const a = walls[edgeIndex];
+  const b = walls[(edgeIndex + 1) % walls.length];
+  const len = dist(a, b);
+  if (len < 1e-6 || depth <= 0) return walls;
+  const lo = Math.max(0, Math.min(offA, offB));
+  const hi = Math.min(len, Math.max(offA, offB));
+  if (hi - lo < 1e-6) return walls;
+
+  const ux = (b.x - a.x) / len;
+  const uz = (b.z - a.z) / len;
+  // wall normal; flip so "out" points away from the room centroid
+  let nx = -uz;
+  let nz = ux;
+  const c = centroid(walls);
+  const mx = (a.x + b.x) / 2;
+  const mz = (a.z + b.z) / 2;
+  const towardCentroid = (c.x - mx) * nx + (c.z - mz) * nz > 0;
+  const outward = towardCentroid ? -1 : 1;
+  const s = (dir === "out" ? outward : -outward) * depth;
+
+  const P1 = { x: a.x + ux * lo, z: a.z + uz * lo };
+  const P2 = { x: a.x + ux * hi, z: a.z + uz * hi };
+  const Q1 = { x: P1.x + nx * s, z: P1.z + nz * s };
+  const Q2 = { x: P2.x + nx * s, z: P2.z + nz * s };
+
+  const out = [...walls];
+  out.splice(edgeIndex + 1, 0, P1, Q1, Q2, P2);
+  return out;
+}
+
 /** Reference geometry for the 3D scene: a slab per wall edge + a flat
  *  baseboard band per edge, offset inward toward the room centroid. */
 export function roomReferenceSlabs(room: Room): RefSlab[] {

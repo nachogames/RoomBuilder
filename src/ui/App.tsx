@@ -28,6 +28,7 @@ import { PlanView } from "../scene/PlanView";
 import { DimField, NumField, SelectField, StepField } from "./fields";
 import { UnitsProvider, useUnits } from "./units";
 import { useProjectHistory } from "./useProjectHistory";
+import { JutTool } from "./JutTool";
 import { bomCsv, cutListCsv, downloadText, pocketCsv } from "../report/csv";
 import {
   exportProjectJson,
@@ -406,6 +407,12 @@ function Workspace({
             in/out, click a wall to drop a breakpoint, double-click a corner
             to remove it. Cmd/Ctrl+Z to undo.
           </p>
+          <JutTool
+            walls={project.room.walls}
+            onApply={(walls) =>
+              setProject((p) => ({ ...p, room: { ...p.room, walls } }))
+            }
+          />
 
           <div className="row">
             <h3>Carcasses</h3>
