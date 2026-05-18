@@ -33,6 +33,43 @@ export function DimField({
   );
 }
 
+/** Units-aware numeric field: type=number so ↑/↓ arrows bump by `step`
+ *  (in the displayed units). Value is stored internally in inches. */
+export function StepField({
+  label,
+  value,
+  onChange,
+  step,
+}: {
+  label: string;
+  value: number;
+  onChange: (v: number) => void;
+  step?: number;
+}) {
+  const { units } = useUnits();
+  const mm = units === "mm";
+  const shown = mm
+    ? Math.round(value * 25.4)
+    : Math.round(value * 100) / 100;
+  const stp = step ?? (mm ? 5 : 0.25);
+  return (
+    <label className="field">
+      <span>
+        {label} <em className="u">{mm ? "mm" : "in"}</em>
+      </span>
+      <input
+        type="number"
+        value={shown}
+        step={stp}
+        onChange={(e) => {
+          const n = Number(e.target.value);
+          if (Number.isFinite(n)) onChange(mm ? n / 25.4 : n);
+        }}
+      />
+    </label>
+  );
+}
+
 export function NumField({
   label,
   value,

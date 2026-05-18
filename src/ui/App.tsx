@@ -23,7 +23,8 @@ import { buildBom } from "../bom/aggregate";
 import { checkCarcass, worstLevel } from "../domain/checks";
 import { checkRunnerSag } from "../domain/sag";
 import { Scene } from "../scene/Scene";
-import { DimField, NumField, SelectField } from "./fields";
+import { PlanView } from "../scene/PlanView";
+import { DimField, NumField, SelectField, StepField } from "./fields";
 import { UnitsProvider, useUnits } from "./units";
 import { bomCsv, cutListCsv, downloadText, pocketCsv } from "../report/csv";
 import {
@@ -49,7 +50,7 @@ const SUPPORT_KINDS: readonly SupportKind[] = [
   "leg",
   "cleat",
 ];
-type Tab = "3D" | "Cut list" | "Pocket plan" | "Materials";
+type Tab = "3D" | "Plan" | "Cut list" | "Pocket plan" | "Materials";
 
 export default function App() {
   const [project, setProject] = useState<Project>(() => defaultProject());
@@ -333,20 +334,18 @@ function Workspace({
                 allowZero
                 onChange={(v) => reflowShelves({ toeKickHeight: v })}
               />
-              <DimField
+              <StepField
                 label="Pos X"
                 value={selected.position.x}
-                allowZero
                 onChange={(v) =>
                   patchSelected({
                     position: { ...selected.position, x: v },
                   })
                 }
               />
-              <DimField
+              <StepField
                 label="Pos Z"
                 value={selected.position.z}
-                allowZero
                 onChange={(v) =>
                   patchSelected({
                     position: { ...selected.position, z: v },
@@ -470,18 +469,16 @@ function Workspace({
                 options={RUNNER_FASTEN}
                 onChange={(v) => patchRunner(r.id, { fastening: v })}
               />
-              <DimField
+              <StepField
                 label="Nudge X"
                 value={r.nudge.x}
-                allowZero
                 onChange={(v) =>
                   patchRunner(r.id, { nudge: { ...r.nudge, x: v } })
                 }
               />
-              <DimField
+              <StepField
                 label="Nudge Z"
                 value={r.nudge.z}
-                allowZero
                 onChange={(v) =>
                   patchRunner(r.id, { nudge: { ...r.nudge, z: v } })
                 }
@@ -616,11 +613,10 @@ function Workspace({
                 />
               ))}
               {(["x", "z"] as const).map((k) => (
-                <DimField
+                <StepField
                   key={k}
                   label={`Pos ${k.toUpperCase()}`}
                   value={b.position[k]}
-                  allowZero
                   onChange={(v) =>
                     setProject((p) => ({
                       ...p,
@@ -649,7 +645,9 @@ function Workspace({
 
         <main className="view">
           <nav className="tabs">
-            {(["3D", "Cut list", "Pocket plan", "Materials"] as Tab[]).map(
+            {(
+              ["3D", "Plan", "Cut list", "Pocket plan", "Materials"] as Tab[]
+            ).map(
               (t) => (
                 <button
                   key={t}
@@ -713,6 +711,10 @@ function Workspace({
               <div className="canvas-wrap">
                 <Scene project={project} />
               </div>
+            )}
+
+            {tab === "Plan" && (
+              <PlanView project={project} setProject={setProject} />
             )}
 
             {tab === "Cut list" && (

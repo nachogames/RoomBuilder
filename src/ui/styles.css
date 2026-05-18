@@ -57,4 +57,7 @@ footer { padding: 6px 12px; color: #888; background: #1d1d22; border-top: 1px so
 .sub { border: 1px solid #2c2c33; border-radius: 8px; padding: 8px; margin: 8px 0; background: #15151a; }
 .sub button { margin-top: 6px; }
 .label { color: #9a9aa6; font-size: 12px; }
+.u { color: #6a6a76; font-style: normal; font-size: 11px; }
+.plan { height: 100%; display: flex; flex-direction: column; }
+.plan-svg { flex: 1; width: 100%; min-height: 0; background: #0f0f12; touch-action: none; }
 .panel .row span button { font-size: 12px; padding: 3px 7px; }
