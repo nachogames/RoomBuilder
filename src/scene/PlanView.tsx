@@ -20,6 +20,7 @@ type Drag =
       nx: number;
       nz: number;
       base: Pt[]; // wall snapshot at drag start
+      spawn: boolean; // straight run -> spawn jut; jut face -> translate
     }
   | { kind: "carcass" | "box"; id: string }
   | null;
@@ -128,12 +129,20 @@ export function PlanView({
       if (Math.abs(amt) > 0.2) movedRef.current = true;
       const Aoff = { x: d.a0.x + d.nx * amt, z: d.a0.z + d.nz * amt };
       const Boff = { x: d.b0.x + d.nx * amt, z: d.b0.z + d.nz * amt };
-      const next = [
-        ...d.base.slice(0, d.index + 1),
-        Aoff,
-        Boff,
-        ...d.base.slice(d.index + 1),
-      ];
+      const j = (d.index + 1) % d.base.length;
+      const next = d.spawn
+        ? // straight wall section → spawn a square jut (anchors stay)
+          [
+            ...d.base.slice(0, d.index + 1),
+            Aoff,
+            Boff,
+            ...d.base.slice(d.index + 1),
+          ]
+        : // jut face (or plain wall) → just move this edge in/out,
+          // moving its two existing markers together (no new points)
+          d.base.map((p, k) =>
+            k === d.index ? Aoff : k === j ? Boff : p,
+          );
       setProject((pr) => ({
         ...pr,
         room: { ...pr.room, walls: next },
@@ -175,11 +184,26 @@ export function PlanView({
   function startEdgeDrag(e: React.PointerEvent, i: number) {
     const rp = toRoom(e);
     if (!rp) return;
+    const m = walls.length;
     const a0 = walls[i];
-    const b0 = walls[(i + 1) % walls.length];
+    const b0 = walls[(i + 1) % m];
     const len = Math.hypot(b0.x - a0.x, b0.z - a0.z) || 1;
-    const nx = -(b0.z - a0.z) / len;
-    const nz = (b0.x - a0.x) / len;
+    const ex = (b0.x - a0.x) / len;
+    const ez = (b0.z - a0.z) / len;
+    const nx = -ez;
+    const nz = ex;
+    // is a neighbour edge in-line with this one? (collinear straight wall)
+    const inline = (p: Pt, q: Pt) => {
+      const l = Math.hypot(q.x - p.x, q.z - p.z) || 1;
+      const cross = ((q.x - p.x) / l) * ez - ((q.z - p.z) / l) * ex;
+      return Math.abs(cross) < 0.12; // ~7°
+    };
+    const prev = walls[(i - 1 + m) % m];
+    const nextP = walls[(i + 2) % m];
+    // spawn a jut only when the grabbed edge is a section of a straight
+    // wall (both neighbours in-line); a jut face's neighbours are the
+    // perpendicular returns, so it just translates instead.
+    const spawn = inline(prev, a0) && inline(b0, nextP);
     (e.target as Element).setPointerCapture?.(e.pointerId);
     movedRef.current = false;
     setGhost(null);
@@ -192,6 +216,7 @@ export function PlanView({
       nx,
       nz,
       base: walls.map((p) => ({ ...p })),
+      spawn,
     });
   }
   function endDrag() {
@@ -219,11 +244,11 @@ export function PlanView({
   return (
     <div className="plan" ref={wrapRef}>
       <p className="label" style={{ padding: "8px 12px 0" }}>
-        <b>Click a wall</b> to drop a breakpoint (marker). <b>Drag a marker</b>{" "}
-        to move it freely. <b>Drag the wall between two markers</b> → it pulls
-        out/in as a square 90° jut (the markers stay put, new perpendicular
-        walls are created). Double-click a corner to remove it. Drag
-        cabinets/totes to place them.
+        <b>Click a wall</b> to drop a marker. <b>Drag the wall between two
+        markers</b> → spawns a square 90° jut. <b>Drag the jut&apos;s face</b>{" "}
+        → moves it in/out (changes depth, no new markers). <b>Drag a
+        marker</b> to change the jut width. Double-click a corner to remove
+        it. Drag cabinets/totes to place them.
         {room.baseboard && (
           <>
             {" "}
