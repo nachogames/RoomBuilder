@@ -11,8 +11,26 @@ import { useUnits } from "../ui/units";
 
 type Drag =
   | { kind: "corner"; index: number }
+  | {
+      kind: "edge";
+      index: number;
+      a0: Pt;
+      b0: Pt;
+      start: Pt;
+      nx: number;
+      nz: number;
+    }
   | { kind: "carcass" | "box"; id: string }
   | null;
+
+function projectOnSeg(a: Pt, b: Pt, p: Pt) {
+  const dx = b.x - a.x;
+  const dz = b.z - a.z;
+  const len2 = dx * dx + dz * dz || 1;
+  let t = ((p.x - a.x) * dx + (p.z - a.z) * dz) / len2;
+  t = Math.max(0, Math.min(1, t));
+  return { x: a.x + t * dx, z: a.z + t * dz };
+}
 
 interface Edit {
   sx: number;
@@ -35,6 +53,8 @@ export function PlanView({
   const svgRef = useRef<SVGSVGElement>(null);
   const [drag, setDrag] = useState<Drag>(null);
   const [edit, setEdit] = useState<Edit | null>(null);
+  const [ghost, setGhost] = useState<{ x: number; z: number } | null>(null);
+  const movedRef = useRef(false);
 
   const room = project.room;
   const walls = room.walls;
@@ -81,12 +101,31 @@ export function PlanView({
     if (!rp) return;
     const { x, z } = rp;
     if (drag.kind === "corner") {
+      movedRef.current = true;
       setProject((pr) => ({
         ...pr,
         room: {
           ...pr.room,
           walls: pr.room.walls.map((p, i) =>
             i === drag.index ? { x, z } : p,
+          ),
+        },
+      }));
+    } else if (drag.kind === "edge") {
+      // translate the whole edge along its perpendicular ("pull out")
+      const amt = (x - drag.start.x) * drag.nx + (z - drag.start.z) * drag.nz;
+      if (Math.abs(amt) > 0.2) movedRef.current = true;
+      const j = (drag.index + 1) % walls.length;
+      setProject((pr) => ({
+        ...pr,
+        room: {
+          ...pr.room,
+          walls: pr.room.walls.map((p, i) =>
+            i === drag.index
+              ? { x: drag.a0.x + drag.nx * amt, z: drag.a0.z + drag.nz * amt }
+              : i === j
+                ? { x: drag.b0.x + drag.nx * amt, z: drag.b0.z + drag.nz * amt }
+                : p,
           ),
         },
       }));
@@ -117,15 +156,41 @@ export function PlanView({
     });
   }
 
-  function addCornerOnEdge(i: number) {
-    const a = walls[i];
-    const b = walls[(i + 1) % walls.length];
-    const mid: Pt = { x: (a.x + b.x) / 2, z: (a.z + b.z) / 2 };
+  function insertCornerAt(i: number, pt: Pt) {
     setProject((pr) => {
       const w = [...pr.room.walls];
-      w.splice(i + 1, 0, mid);
+      w.splice(i + 1, 0, pt);
       return { ...pr, room: { ...pr.room, walls: w } };
     });
+  }
+  function startEdgeDrag(e: React.PointerEvent, i: number) {
+    const rp = toRoom(e);
+    if (!rp) return;
+    const a0 = walls[i];
+    const b0 = walls[(i + 1) % walls.length];
+    const len = Math.hypot(b0.x - a0.x, b0.z - a0.z) || 1;
+    const nx = -(b0.z - a0.z) / len;
+    const nz = (b0.x - a0.x) / len;
+    (e.target as Element).setPointerCapture?.(e.pointerId);
+    movedRef.current = false;
+    setGhost(null);
+    setDrag({
+      kind: "edge",
+      index: i,
+      a0,
+      b0,
+      start: projectOnSeg(a0, b0, rp),
+      nx,
+      nz,
+    });
+  }
+  function endDrag() {
+    if (drag?.kind === "edge" && !movedRef.current) {
+      // a click (no pull) drops a breakpoint at that spot on the wall
+      insertCornerAt(drag.index, drag.start);
+    }
+    setDrag(null);
+    movedRef.current = false;
   }
   function deleteCorner(i: number) {
     if (walls.length <= 3) return;
@@ -144,9 +209,10 @@ export function PlanView({
   return (
     <div className="plan" ref={wrapRef}>
       <p className="label" style={{ padding: "8px 12px 0" }}>
-        Drag corners to shape the room. Click a wall's <b>+</b> to add a
-        corner; double-click a corner to remove it. Drag cabinets/totes to
-        place them.
+        <b>Drag a wall</b> to pull it in/out. <b>Click anywhere on a wall</b>{" "}
+        to drop a breakpoint, then drag that corner. For a straight jut: drop
+        two breakpoints, then drag the wall between them out. Double-click a
+        corner to remove it. Drag cabinets/totes to place them.
         {room.baseboard && (
           <>
             {" "}
@@ -166,8 +232,8 @@ export function PlanView({
           maxZ - minZ + 2 * pad
         }`}
         onPointerMove={onMove}
-        onPointerUp={() => setDrag(null)}
-        onPointerLeave={() => setDrag(null)}
+        onPointerUp={endDrag}
+        onPointerLeave={endDrag}
       >
         {/* wall band (thick stroke) + interior fill */}
         <polygon
@@ -335,7 +401,6 @@ export function PlanView({
           const mx = (a.x + b.x) / 2;
           const mz = (a.z + b.z) / 2;
           const len = Math.hypot(b.x - a.x, b.z - a.z);
-          // outward offset for label so it sits off the wall
           let nx = -(b.z - a.z) / (len || 1);
           let nz = (b.x - a.x) / (len || 1);
           if ((c.x - mx) * nx + (c.z - mz) * nz > 0) {
@@ -346,6 +411,23 @@ export function PlanView({
           const lz = mz + nz * fontPx * 1.6;
           return (
             <g key={i}>
+              {/* invisible thick hit-line: hover = ghost, click = add
+                  breakpoint, drag = pull the wall out/in */}
+              <line
+                className="wall-hit"
+                x1={a.x}
+                y1={a.z}
+                x2={b.x}
+                y2={b.z}
+                strokeWidth={fontPx * 1.1}
+                onPointerDown={(e) => startEdgeDrag(e, i)}
+                onPointerMove={(e) => {
+                  if (drag) return;
+                  const rp = toRoom(e);
+                  if (rp) setGhost(projectOnSeg(a, b, rp));
+                }}
+                onPointerLeave={() => !drag && setGhost(null)}
+              />
               {showDims && (
                 <text
                   className="dim edit wall"
@@ -369,27 +451,19 @@ export function PlanView({
                   {fmt(len)}
                 </text>
               )}
-              <circle
-                cx={mx}
-                cy={mz}
-                r={fontPx * 0.5}
-                className="addpt"
-                onClick={() => addCornerOnEdge(i)}
-              />
-              <text
-                x={mx}
-                y={mz}
-                fontSize={fontPx * 0.8}
-                fill="#0f0f12"
-                textAnchor="middle"
-                dominantBaseline="middle"
-                style={{ pointerEvents: "none" }}
-              >
-                +
-              </text>
             </g>
           );
         })}
+
+        {/* ghost breakpoint preview where a click would drop a corner */}
+        {ghost && !drag && (
+          <circle
+            cx={ghost.x}
+            cy={ghost.z}
+            r={fontPx * 0.5}
+            className="ghost-pt"
+          />
+        )}
 
         {/* corner handles */}
         {walls.map((p, i) => (
@@ -397,13 +471,19 @@ export function PlanView({
             key={i}
             cx={p.x}
             cy={p.z}
-            r={fontPx * 0.55}
+            r={fontPx * 0.6}
             className="corner"
             onPointerDown={(e) => {
+              e.stopPropagation();
               (e.target as Element).setPointerCapture?.(e.pointerId);
+              movedRef.current = false;
+              setGhost(null);
               setDrag({ kind: "corner", index: i });
             }}
-            onDoubleClick={() => deleteCorner(i)}
+            onDoubleClick={(e) => {
+              e.stopPropagation();
+              deleteCorner(i);
+            }}
           />
         ))}
       </svg>

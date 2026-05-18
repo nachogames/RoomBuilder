@@ -27,6 +27,7 @@ import { Scene } from "../scene/Scene";
 import { PlanView } from "../scene/PlanView";
 import { DimField, NumField, SelectField, StepField } from "./fields";
 import { UnitsProvider, useUnits } from "./units";
+import { useProjectHistory } from "./useProjectHistory";
 import { bomCsv, cutListCsv, downloadText, pocketCsv } from "../report/csv";
 import {
   exportProjectJson,
@@ -54,10 +55,17 @@ const SUPPORT_KINDS: readonly SupportKind[] = [
 type Tab = "3D" | "Plan" | "Cut list" | "Pocket plan" | "Materials";
 
 export default function App() {
-  const [project, setProject] = useState<Project>(() => defaultProject());
+  const hist = useProjectHistory(defaultProject());
   return (
-    <UnitsProvider units={project.units}>
-      <Workspace project={project} setProject={setProject} />
+    <UnitsProvider units={hist.project.units}>
+      <Workspace
+        project={hist.project}
+        setProject={hist.setProject}
+        undo={hist.undo}
+        redo={hist.redo}
+        canUndo={hist.canUndo}
+        canRedo={hist.canRedo}
+      />
     </UnitsProvider>
   );
 }
@@ -65,9 +73,17 @@ export default function App() {
 function Workspace({
   project,
   setProject,
+  undo,
+  redo,
+  canUndo,
+  canRedo,
 }: {
   project: Project;
-  setProject: React.Dispatch<React.SetStateAction<Project>>;
+  setProject: (u: Project | ((p: Project) => Project)) => void;
+  undo: () => void;
+  redo: () => void;
+  canUndo: boolean;
+  canRedo: boolean;
 }) {
   const { fmt } = useUnits();
   const [selId, setSelId] = useState<string>(
@@ -111,6 +127,19 @@ function Workspace({
   useEffect(() => {
     listProjects().then(setSavedNames).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "z") return;
+      e.preventDefault();
+      if (e.shiftKey) redo();
+      else undo();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [undo, redo]);
 
   function patchSelected(patch: Partial<Carcass>) {
     if (!selected) return;
@@ -210,6 +239,16 @@ function Workspace({
           title="Toggle units"
         >
           {project.units === "in" ? 'inches' : 'mm'}
+        </button>
+        <button onClick={undo} disabled={!canUndo} title="Undo (Cmd/Ctrl+Z)">
+          ↶ Undo
+        </button>
+        <button
+          onClick={redo}
+          disabled={!canRedo}
+          title="Redo (Cmd/Ctrl+Shift+Z)"
+        >
+          ↷ Redo
         </button>
         <div className="spacer" />
         <button
@@ -363,8 +402,9 @@ function Workspace({
             Reset walls to box
           </button>
           <p className="label" style={{ marginTop: 6 }}>
-            Shape the room in the <b>Plan</b> tab: drag corners, click a
-            wall&apos;s + to add a corner, double-click a corner to remove it.
+            Shape the room in the <b>Plan</b> tab: drag a wall to pull it
+            in/out, click a wall to drop a breakpoint, double-click a corner
+            to remove it. Cmd/Ctrl+Z to undo.
           </p>
 
           <div className="row">

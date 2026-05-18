@@ -6,6 +6,8 @@ export type Inches = number;
 
 /** Round to nearest 1/denom and render as a mixed fraction, e.g. 23.75 -> `23 3/4"`. */
 export function formatInches(value: Inches, denom = 16): string {
+  // A formatter must never crash the app: bail safely on non-finite input.
+  if (!Number.isFinite(value)) return '0"';
   const neg = value < 0;
   const v = Math.abs(value);
   const whole = Math.floor(v);
@@ -35,6 +37,12 @@ export function parseInches(input: string): Inches | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/** Iterative GCD on coerced integers — cannot recurse-overflow on bad input. */
 function gcd(a: number, b: number): number {
-  return b === 0 ? a : gcd(b, a % b);
+  a = Math.abs(Math.trunc(a)) || 0;
+  b = Math.abs(Math.trunc(b)) || 0;
+  while (b !== 0) {
+    [a, b] = [b, a % b];
+  }
+  return a || 1;
 }

@@ -67,8 +67,9 @@ footer { padding: 6px 12px; color: #888; background: #1d1d22; border-top: 1px so
 .dim.wall:hover { fill: #8fd0ff; }
 .corner { fill: #5fa8d3; stroke: #cfe7f5; stroke-width: 0.4px; cursor: grab; }
 .corner:hover { fill: #8fd0ff; }
-.addpt { fill: #e3cda0; opacity: .55; cursor: copy; }
-.addpt:hover { opacity: 1; }
+.wall-hit { stroke: transparent; fill: none; cursor: grab; }
+.wall-hit:active { cursor: grabbing; }
+.ghost-pt { fill: #e3cda0; opacity: .8; stroke: #0f0f12; stroke-width: 0.4px; pointer-events: none; }
 .dim-input {
   position: absolute; transform: translate(-50%, -50%);
   width: 70px; padding: 2px 4px; font-size: 12px;

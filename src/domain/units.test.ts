@@ -13,6 +13,11 @@ describe("formatInches", () => {
   it("rounds to nearest 1/16 and carries", () => {
     expect(formatInches(0.96875)).toBe('1"'); // 31/32 -> rounds to 16/16
   });
+  it("never recurses/crashes on non-finite input", () => {
+    expect(formatInches(NaN)).toBe('0"');
+    expect(formatInches(Infinity)).toBe('0"');
+    expect(formatInches(-Infinity)).toBe('0"');
+  });
 });
 
 describe("parseInches", () => {
