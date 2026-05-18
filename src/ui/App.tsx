@@ -92,7 +92,6 @@ function Workspace({
   );
   const [tab, setTab] = useState<Tab>("3D");
   const [showDims, setShowDims] = useState(true);
-  const [ortho, setOrtho] = useState(true);
   const [savedNames, setSavedNames] = useState<string[]>([]);
   const [status, setStatus] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
@@ -787,22 +786,13 @@ function Workspace({
             )}
             <div className="spacer" />
             {tab === "Plan" && (
-              <>
-                <button
-                  className={ortho ? "active" : ""}
-                  onClick={() => setOrtho((s) => !s)}
-                  title="Lock wall edits to 90° (axis-aligned)"
-                >
-                  Ortho 90°: {ortho ? "on" : "off"}
-                </button>
-                <button
-                  className={showDims ? "active" : ""}
-                  onClick={() => setShowDims((s) => !s)}
-                  title="Show or hide all dimensions"
-                >
-                  Dimensions: {showDims ? "on" : "off"}
-                </button>
-              </>
+              <button
+                className={showDims ? "active" : ""}
+                onClick={() => setShowDims((s) => !s)}
+                title="Show or hide all dimensions"
+              >
+                Dimensions: {showDims ? "on" : "off"}
+              </button>
             )}
             {tab === "Cut list" && (
               <button
@@ -863,7 +853,6 @@ function Workspace({
                 project={project}
                 setProject={setProject}
                 showDims={showDims}
-                ortho={ortho}
               />
             )}
 

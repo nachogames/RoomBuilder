@@ -10,16 +10,7 @@ import {
 import { useUnits } from "../ui/units";
 
 type Drag =
-  | {
-      kind: "corner";
-      index: number;
-      ox: number;
-      oz: number;
-      prev: number;
-      next: number;
-      aHoriz: boolean; // edge prev->corner originally horizontal
-      bHoriz: boolean; // edge corner->next originally horizontal
-    }
+  | { kind: "corner"; index: number }
   | {
       kind: "edge";
       index: number;
@@ -28,7 +19,7 @@ type Drag =
       start: Pt;
       nx: number;
       nz: number;
-      horiz: boolean; // edge is more horizontal than vertical
+      base: Pt[]; // wall snapshot at drag start
     }
   | { kind: "carcass" | "box"; id: string }
   | null;
@@ -56,12 +47,10 @@ export function PlanView({
   project,
   setProject,
   showDims,
-  ortho,
 }: {
   project: Project;
   setProject: React.Dispatch<React.SetStateAction<Project>>;
   showDims: boolean;
-  ortho: boolean;
 }) {
   const { fmt, parse, units } = useUnits();
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -116,6 +105,7 @@ export function PlanView({
     if (!rp) return;
     const { x, z } = rp;
     if (drag.kind === "corner") {
+      // free move — markers can create angled walls between points
       movedRef.current = true;
       const nx = snap(x);
       const nz = snap(z);
@@ -124,55 +114,29 @@ export function PlanView({
         ...pr,
         room: {
           ...pr.room,
-          walls: pr.room.walls.map((p, i) => {
-            if (i === d.index) return { x: nx, z: nz };
-            if (!ortho) return p;
-            // keep both adjacent walls axis-aligned by sliding the
-            // neighbour corner's matching coordinate with this one
-            if (i === d.prev)
-              return d.aHoriz ? { ...p, z: nz } : { ...p, x: nx };
-            if (i === d.next)
-              return d.bHoriz ? { ...p, z: nz } : { ...p, x: nx };
-            return p;
-          }),
+          walls: pr.room.walls.map((p, i) =>
+            i === d.index ? { x: nx, z: nz } : p,
+          ),
         },
       }));
     } else if (drag.kind === "edge") {
+      // grab the edge → the two endpoints stay anchored on the wall line
+      // and a square jut is spawned: a0 → A' → B' → b0, with A'/B' the
+      // pulled segment offset along the wall's perpendicular (always 90°).
       const d = drag;
-      const j = (d.index + 1) % walls.length;
-      let A: Pt;
-      let Bp: Pt;
-      if (ortho) {
-        // Ortho: the wall slides straight on ONE axis and stays perfectly
-        // axis-aligned (a horizontal wall moves in Z, a vertical wall in X).
-        if (d.horiz) {
-          const nz = snap(z);
-          A = { x: d.a0.x, z: nz };
-          Bp = { x: d.b0.x, z: nz };
-          if (Math.abs(nz - d.a0.z) > 0.2) movedRef.current = true;
-        } else {
-          const nx = snap(x);
-          A = { x: nx, z: d.a0.z };
-          Bp = { x: nx, z: d.b0.z };
-          if (Math.abs(nx - d.a0.x) > 0.2) movedRef.current = true;
-        }
-      } else {
-        // free: translate along the wall's own perpendicular
-        const amt = snap(
-          (x - d.start.x) * d.nx + (z - d.start.z) * d.nz,
-        );
-        if (Math.abs(amt) > 0.2) movedRef.current = true;
-        A = { x: d.a0.x + d.nx * amt, z: d.a0.z + d.nz * amt };
-        Bp = { x: d.b0.x + d.nx * amt, z: d.b0.z + d.nz * amt };
-      }
+      const amt = snap((x - d.start.x) * d.nx + (z - d.start.z) * d.nz);
+      if (Math.abs(amt) > 0.2) movedRef.current = true;
+      const Aoff = { x: d.a0.x + d.nx * amt, z: d.a0.z + d.nz * amt };
+      const Boff = { x: d.b0.x + d.nx * amt, z: d.b0.z + d.nz * amt };
+      const next = [
+        ...d.base.slice(0, d.index + 1),
+        Aoff,
+        Boff,
+        ...d.base.slice(d.index + 1),
+      ];
       setProject((pr) => ({
         ...pr,
-        room: {
-          ...pr.room,
-          walls: pr.room.walls.map((p, i) =>
-            i === d.index ? A : i === j ? Bp : p,
-          ),
-        },
+        room: { ...pr.room, walls: next },
       }));
     } else if (drag.kind === "carcass") {
       setProject((pr) => ({
@@ -227,7 +191,7 @@ export function PlanView({
       start: projectOnSeg(a0, b0, rp),
       nx,
       nz,
-      horiz: Math.abs(b0.z - a0.z) <= Math.abs(b0.x - a0.x),
+      base: walls.map((p) => ({ ...p })),
     });
   }
   function endDrag() {
@@ -255,12 +219,11 @@ export function PlanView({
   return (
     <div className="plan" ref={wrapRef}>
       <p className="label" style={{ padding: "8px 12px 0" }}>
-        <b>Grab a wall and drag</b> to move it. With <b>Ortho 90° on</b> the
-        wall stays perfectly straight and slides on one axis only (no
-        diagonals). <b>Click a wall</b> to drop a breakpoint; for an exact
-        jut use the numeric <b>90° jut</b> tool in the left panel.
-        Double-click a corner to remove it. Drag cabinets/totes to place
-        them.
+        <b>Click a wall</b> to drop a breakpoint (marker). <b>Drag a marker</b>{" "}
+        to move it freely. <b>Drag the wall between two markers</b> → it pulls
+        out/in as a square 90° jut (the markers stay put, new perpendicular
+        walls are created). Double-click a corner to remove it. Drag
+        cabinets/totes to place them.
         {room.baseboard && (
           <>
             {" "}
@@ -526,19 +489,7 @@ export function PlanView({
               (e.target as Element).setPointerCapture?.(e.pointerId);
               movedRef.current = false;
               setGhost(null);
-              const n = walls.length;
-              const A = walls[(i - 1 + n) % n];
-              const B = walls[(i + 1) % n];
-              setDrag({
-                kind: "corner",
-                index: i,
-                ox: p.x,
-                oz: p.z,
-                prev: (i - 1 + n) % n,
-                next: (i + 1) % n,
-                aHoriz: Math.abs(A.z - p.z) <= Math.abs(A.x - p.x),
-                bHoriz: Math.abs(B.z - p.z) <= Math.abs(B.x - p.x),
-              });
+              setDrag({ kind: "corner", index: i });
             }}
             onDoubleClick={(e) => {
               e.stopPropagation();
