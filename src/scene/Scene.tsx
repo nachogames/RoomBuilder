@@ -109,6 +109,7 @@ function RoomShell({ project }: { project: Project }) {
         <mesh
           key={s.id}
           position={[s.center.x, s.center.y, s.center.z]}
+          rotation={[0, s.rotY, 0]}
           renderOrder={-1}
         >
           <boxGeometry args={[s.size.x, s.size.y, s.size.z]} />

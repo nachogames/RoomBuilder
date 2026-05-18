@@ -58,6 +58,21 @@ footer { padding: 6px 12px; color: #888; background: #1d1d22; border-top: 1px so
 .sub button { margin-top: 6px; }
 .label { color: #9a9aa6; font-size: 12px; }
 .u { color: #6a6a76; font-style: normal; font-size: 11px; }
-.plan { height: 100%; display: flex; flex-direction: column; }
+.plan { height: 100%; display: flex; flex-direction: column; position: relative; }
 .plan-svg { flex: 1; width: 100%; min-height: 0; background: #0f0f12; touch-action: none; }
+.dim { fill: #d8d8e0; paint-order: stroke; stroke: #0f0f12; stroke-width: 0.5px; }
+.dim.ro { fill: #caa46a; }
+.dim.edit { cursor: text; }
+.dim.edit:hover { fill: #ffd27a; }
+.dim.wall:hover { fill: #8fd0ff; }
+.corner { fill: #5fa8d3; stroke: #cfe7f5; stroke-width: 0.4px; cursor: grab; }
+.corner:hover { fill: #8fd0ff; }
+.addpt { fill: #e3cda0; opacity: .55; cursor: copy; }
+.addpt:hover { opacity: 1; }
+.dim-input {
+  position: absolute; transform: translate(-50%, -50%);
+  width: 70px; padding: 2px 4px; font-size: 12px;
+  background: #26262d; color: #fff; border: 1px solid #f0a; border-radius: 4px;
+  z-index: 5;
+}
 .panel .row span button { font-size: 12px; padding: 3px 7px; }

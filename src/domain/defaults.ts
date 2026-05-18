@@ -69,6 +69,16 @@ export function defaultRunner(spanned: string[]): Runner {
   };
 }
 
+/** Axis-aligned rectangle polygon centered on the origin (CW in x/z). */
+export function rectWalls(length: number, width: number) {
+  return [
+    { x: -length / 2, z: -width / 2 },
+    { x: length / 2, z: -width / 2 },
+    { x: length / 2, z: width / 2 },
+    { x: -length / 2, z: width / 2 },
+  ];
+}
+
 export function defaultBumpOut(wall: "N" | "S" | "E" | "W" = "N") {
   return {
     id: uid("bump"),
@@ -135,7 +145,7 @@ export function defaultProject(): Project {
       width: 120,
       ceilingHeight: 96,
       wallThickness: 4.5,
-      bumpOuts: [],
+      walls: rectWalls(128, 120),
       baseboard: { height: 3.5, thickness: 0.5 },
     },
     carcasses: [defaultBookcase()],
@@ -152,7 +162,10 @@ export function normalizeProject(p: Project): Project {
     room: {
       ...p.room,
       wallThickness: p.room.wallThickness ?? 4.5,
-      bumpOuts: p.room.bumpOuts ?? [],
+      walls:
+        p.room.walls && p.room.walls.length >= 3
+          ? p.room.walls
+          : rectWalls(p.room.length ?? 128, p.room.width ?? 120),
       baseboard:
         p.room.baseboard === undefined
           ? { height: 3.5, thickness: 0.5 }

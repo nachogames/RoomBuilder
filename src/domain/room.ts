@@ -1,96 +1,97 @@
-import type { Room, BumpOut } from "./types";
+import type { Pt, Room } from "./types";
 
 export interface RefSlab {
   id: string;
-  kind: "wall" | "bump" | "baseboard";
+  kind: "wall" | "baseboard";
   center: { x: number; y: number; z: number };
   size: { x: number; y: number; z: number };
+  /** rotation about the Y (up) axis, radians */
+  rotY: number;
 }
 
-/** Interior baseboard run, including the two return walls of each bump-out.
- *  Reference only — never enters the cut list. Returns inches. */
+const dist = (a: Pt, b: Pt) => Math.hypot(b.x - a.x, b.z - a.z);
+
+/** Closed-polygon edges as [from, to] pairs. */
+export function wallEdges(walls: Pt[]): Array<[Pt, Pt]> {
+  return walls.map((p, i) => [p, walls[(i + 1) % walls.length]]);
+}
+
+export function polygonPerimeterInches(walls: Pt[]): number {
+  return wallEdges(walls).reduce((s, [a, b]) => s + dist(a, b), 0);
+}
+
+/** Baseboard run = wall perimeter. Reference only — never in the cut list. */
 export function baseboardLengthInches(room: Room): number {
-  const base = 2 * (room.length + room.width);
-  const jogs = room.bumpOuts.reduce((s, b) => s + 2 * b.depth, 0);
-  return base + jogs;
+  return polygonPerimeterInches(room.walls);
 }
 
-/** Plan-view rectangle (in room coords) for a bump-out's jut volume. */
-export function bumpPlanRect(room: Room, b: BumpOut) {
-  const { length: L, width: W } = room;
-  const sign = b.dir === "out" ? 1 : -1;
-  if (b.wall === "S" || b.wall === "N") {
-    const x = -L / 2 + b.offset;
-    const zEdge = b.wall === "S" ? -W / 2 : W / 2;
-    const outward = b.wall === "S" ? -1 : 1;
-    const zStart = zEdge;
-    const zEnd = zEdge + outward * sign * b.depth;
-    return {
-      x,
-      z: Math.min(zStart, zEnd),
-      w: b.width,
-      d: Math.abs(zEnd - zStart),
-    };
-  }
-  const z = -W / 2 + b.offset;
-  const xEdge = b.wall === "W" ? -L / 2 : L / 2;
-  const outward = b.wall === "W" ? -1 : 1;
-  const xStart = xEdge;
-  const xEnd = xEdge + outward * sign * b.depth;
+export function centroid(walls: Pt[]): Pt {
+  const n = walls.length;
   return {
-    x: Math.min(xStart, xEnd),
-    z,
-    w: Math.abs(xEnd - xStart),
-    d: b.width,
+    x: walls.reduce((s, p) => s + p.x, 0) / n,
+    z: walls.reduce((s, p) => s + p.z, 0) / n,
   };
 }
 
-/** Reference geometry for the 3D scene: 4 walls, bump-out volumes, and a
- *  flat baseboard band on each wall. */
+/**
+ * Move corner `i+1` along the current edge direction so edge `i` becomes
+ * `newLen` long, keeping corner `i` fixed. Pure.
+ */
+export function setWallLength(
+  walls: Pt[],
+  edgeIndex: number,
+  newLen: number,
+): Pt[] {
+  const a = walls[edgeIndex];
+  const b = walls[(edgeIndex + 1) % walls.length];
+  const len = dist(a, b) || 1;
+  const ux = (b.x - a.x) / len;
+  const uz = (b.z - a.z) / len;
+  const moved = { x: a.x + ux * newLen, z: a.z + uz * newLen };
+  return walls.map((p, idx) =>
+    idx === (edgeIndex + 1) % walls.length ? moved : p,
+  );
+}
+
+/** Reference geometry for the 3D scene: a slab per wall edge + a flat
+ *  baseboard band per edge, offset inward toward the room centroid. */
 export function roomReferenceSlabs(room: Room): RefSlab[] {
-  const { length: L, width: W, ceilingHeight: H, wallThickness: t } = room;
+  const { ceilingHeight: H, wallThickness: t } = room;
+  const c = centroid(room.walls);
   const out: RefSlab[] = [];
-  const wall = (
-    id: string,
-    cx: number,
-    cz: number,
-    sx: number,
-    sz: number,
-  ) =>
+
+  wallEdges(room.walls).forEach(([a, b], i) => {
+    const len = dist(a, b);
+    if (len < 1e-6) return;
+    const mx = (a.x + b.x) / 2;
+    const mz = (a.z + b.z) / 2;
+    const ang = Math.atan2(b.z - a.z, b.x - a.x);
     out.push({
-      id,
+      id: `w${i}`,
       kind: "wall",
-      center: { x: cx, y: H / 2, z: cz },
-      size: { x: sx, y: H, z: sz },
+      center: { x: mx, y: H / 2, z: mz },
+      size: { x: len + t, y: H, z: t },
+      rotY: -ang,
     });
-  wall("wS", 0, -W / 2 - t / 2, L + 2 * t, t);
-  wall("wN", 0, W / 2 + t / 2, L + 2 * t, t);
-  wall("wW", -L / 2 - t / 2, 0, t, W + 2 * t);
-  wall("wE", L / 2 + t / 2, 0, t, W + 2 * t);
 
-  for (const b of room.bumpOuts) {
-    const r = bumpPlanRect(room, b);
-    out.push({
-      id: b.id,
-      kind: "bump",
-      center: { x: r.x + r.w / 2, y: H / 2, z: r.z + r.d / 2 },
-      size: { x: r.w, y: H, z: r.d },
-    });
-  }
-
-  if (room.baseboard) {
-    const { height: bh, thickness: bt } = room.baseboard;
-    const bb = (id: string, cx: number, cz: number, sx: number, sz: number) =>
+    if (room.baseboard) {
+      const { height: bh, thickness: bt } = room.baseboard;
+      // inward unit normal (toward centroid)
+      let nx = -(b.z - a.z) / len;
+      let nz = (b.x - a.x) / len;
+      if ((c.x - mx) * nx + (c.z - mz) * nz < 0) {
+        nx = -nx;
+        nz = -nz;
+      }
+      const off = t / 2 + bt / 2;
       out.push({
-        id,
+        id: `bb${i}`,
         kind: "baseboard",
-        center: { x: cx, y: bh / 2, z: cz },
-        size: { x: sx, y: bh, z: sz },
+        center: { x: mx + nx * off, y: bh / 2, z: mz + nz * off },
+        size: { x: len, y: bh, z: bt },
+        rotY: -ang,
       });
-    bb("bbS", 0, -W / 2 + bt / 2, L, bt);
-    bb("bbN", 0, W / 2 - bt / 2, L, bt);
-    bb("bbW", -L / 2 + bt / 2, 0, bt, W);
-    bb("bbE", L / 2 - bt / 2, 0, bt, W);
-  }
+    }
+  });
   return out;
 }

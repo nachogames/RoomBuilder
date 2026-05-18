@@ -59,12 +59,21 @@ export interface Baseboard {
   thickness: Inches;
 }
 
+export interface Pt {
+  x: Inches;
+  z: Inches;
+}
+
 export interface Room {
+  /** legacy "box" dimensions; used only to seed/reset a rectangle */
   length: Inches; // along X
   width: Inches; // along Z
   ceilingHeight: Inches;
   wallThickness: Inches;
-  bumpOuts: BumpOut[];
+  /** ordered wall corners (closed polygon). The real room shape. */
+  walls: Pt[];
+  /** deprecated; kept so old saved projects still parse */
+  bumpOuts?: BumpOut[];
   /** flat baseboard reference; null = none. Not counted in the cut list. */
   baseboard: Baseboard | null;
 }

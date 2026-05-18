@@ -11,12 +11,11 @@ import {
   defaultBookcase,
   defaultRunner,
   defaultRefBox,
-  defaultBumpOut,
   deskAssembly,
   normalizeProject,
+  rectWalls,
   uid,
 } from "../domain/defaults";
-import type { WallId } from "../domain/types";
 import { evenlySpacedShelves } from "../domain/shelves";
 import { buildProject } from "../geometry";
 import { buildCutList } from "../cutlist";
@@ -75,6 +74,7 @@ function Workspace({
     project.carcasses[0]?.id ?? "",
   );
   const [tab, setTab] = useState<Tab>("3D");
+  const [showDims, setShowDims] = useState(true);
   const [savedNames, setSavedNames] = useState<string[]>([]);
   const [status, setStatus] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
@@ -348,97 +348,24 @@ function Workspace({
             </>
           )}
 
-          <div className="row">
-            <h3>Bump-outs</h3>
-            <button
-              onClick={() =>
-                setProject((p) => ({
-                  ...p,
-                  room: {
-                    ...p.room,
-                    bumpOuts: [...p.room.bumpOuts, defaultBumpOut("N")],
-                  },
-                }))
-              }
-            >
-              + Jut
-            </button>
-          </div>
-          {project.room.bumpOuts.map((b) => {
-            const patchB = (patch: Partial<typeof b>) =>
+          <button
+            onClick={() =>
               setProject((p) => ({
                 ...p,
                 room: {
                   ...p.room,
-                  bumpOuts: p.room.bumpOuts.map((x) =>
-                    x.id === b.id ? { ...x, ...patch } : x,
-                  ),
+                  walls: rectWalls(p.room.length, p.room.width),
                 },
-              }));
-            return (
-              <div key={b.id} className="sub">
-                <input
-                  className="proj-name"
-                  style={{ width: "100%" }}
-                  value={b.label}
-                  onChange={(e) => patchB({ label: e.target.value })}
-                />
-                <div className="row">
-                  <select
-                    value={b.wall}
-                    onChange={(e) =>
-                      patchB({ wall: e.target.value as WallId })
-                    }
-                  >
-                    {(["N", "S", "E", "W"] as WallId[]).map((w) => (
-                      <option key={w} value={w}>
-                        {w} wall
-                      </option>
-                    ))}
-                  </select>
-                  <select
-                    value={b.dir}
-                    onChange={(e) =>
-                      patchB({ dir: e.target.value as "out" | "in" })
-                    }
-                  >
-                    <option value="out">juts out</option>
-                    <option value="in">recess in</option>
-                  </select>
-                </div>
-                <StepField
-                  label="Offset"
-                  value={b.offset}
-                  onChange={(v) => patchB({ offset: v })}
-                />
-                <StepField
-                  label="Width"
-                  value={b.width}
-                  onChange={(v) => patchB({ width: v })}
-                />
-                <StepField
-                  label="Depth"
-                  value={b.depth}
-                  onChange={(v) => patchB({ depth: v })}
-                />
-                <button
-                  onClick={() =>
-                    setProject((p) => ({
-                      ...p,
-                      room: {
-                        ...p.room,
-                        bumpOuts: p.room.bumpOuts.filter(
-                          (x) => x.id !== b.id,
-                        ),
-                      },
-                    }))
-                  }
-                >
-                  Delete jut
-                </button>
-              </div>
-            );
-          })}
+              }))
+            }
+            title="Reset walls to a rectangle of Length x Width"
+          >
+            Reset walls to box
+          </button>
+          <p className="label" style={{ marginTop: 6 }}>
+            Shape the room in the <b>Plan</b> tab: drag corners, click a
+            wall&apos;s + to add a corner, double-click a corner to remove it.
+          </p>
 
           <div className="row">
             <h3>Carcasses</h3>
@@ -811,6 +738,15 @@ function Workspace({
               ),
             )}
             <div className="spacer" />
+            {tab === "Plan" && (
+              <button
+                className={showDims ? "active" : ""}
+                onClick={() => setShowDims((s) => !s)}
+                title="Show or hide all dimensions"
+              >
+                Dimensions: {showDims ? "on" : "off"}
+              </button>
+            )}
             {tab === "Cut list" && (
               <button
                 onClick={() =>
@@ -866,7 +802,11 @@ function Workspace({
             )}
 
             {tab === "Plan" && (
-              <PlanView project={project} setProject={setProject} />
+              <PlanView
+                project={project}
+                setProject={setProject}
+                showDims={showDims}
+              />
             )}
 
             {tab === "Cut list" && (
