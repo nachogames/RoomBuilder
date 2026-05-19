@@ -152,27 +152,45 @@ export function PlanView({
         room: { ...pr.room, walls: next },
       }));
     } else if (drag.kind === "carcass") {
-      // wall resistance: the whole footprint must stay inside the room
       const c = project.carcasses.find((k) => k.id === drag.id);
-      if (
-        c &&
-        !rectInsideRoom(walls, x, z, c.width, c.depth, c.rotationDeg)
-      )
-        return;
+      if (!c) return;
+      // wall resistance with slide: block only the axis that would push the
+      // footprint through a wall, so you can still run along it.
+      const ok = (px: number, pz: number) =>
+        rectInsideRoom(walls, px, pz, c.width, c.depth, c.rotationDeg);
+      const p0 = c.position;
+      const pos = ok(x, z)
+        ? { x, z }
+        : ok(x, p0.z)
+          ? { x, z: p0.z }
+          : ok(p0.x, z)
+            ? { x: p0.x, z }
+            : p0;
+      if (pos === p0) return;
       setProject((pr) => ({
         ...pr,
         carcasses: pr.carcasses.map((k) =>
-          k.id === drag.id ? { ...k, position: { x, z } } : k,
+          k.id === drag.id ? { ...k, position: pos } : k,
         ),
       }));
     } else {
       const bx = project.refBoxes.find((k) => k.id === drag.id);
-      if (bx && !rectInsideRoom(walls, x, z, bx.width, bx.depth))
-        return;
+      if (!bx) return;
+      const ok = (px: number, pz: number) =>
+        rectInsideRoom(walls, px, pz, bx.width, bx.depth);
+      const p0 = bx.position;
+      const pos = ok(x, z)
+        ? { x, z }
+        : ok(x, p0.z)
+          ? { x, z: p0.z }
+          : ok(p0.x, z)
+            ? { x: p0.x, z }
+            : p0;
+      if (pos === p0) return;
       setProject((pr) => ({
         ...pr,
         refBoxes: pr.refBoxes.map((k) =>
-          k.id === drag.id ? { ...k, position: { x, z } } : k,
+          k.id === drag.id ? { ...k, position: pos } : k,
         ),
       }));
     }
