@@ -3,6 +3,7 @@ import {
   addJut,
   baseboardLengthInches,
   pointInRoom,
+  rectInsideRoom,
   polygonPerimeterInches,
   roomReferenceSlabs,
   setJutDepthSymmetric,
@@ -111,6 +112,23 @@ describe("pointInRoom", () => {
     expect(pointInRoom(w, 0, 0)).toBe(true);
     expect(pointInRoom(w, 200, 0)).toBe(false);
     expect(pointInRoom(w, 0, 100)).toBe(false);
+  });
+});
+
+describe("rectInsideRoom (footprint, not just center)", () => {
+  const w = rectWalls(100, 80); // x in [-50,50], z in [-40,40]
+  it("true when the whole footprint fits", () => {
+    expect(rectInsideRoom(w, 0, 0, 20, 10)).toBe(true);
+  });
+  it("false when an edge crosses the wall even if the center is inside", () => {
+    // center x=45 is inside, but half-width 10 -> corner at 55 > 50
+    expect(rectInsideRoom(w, 45, 0, 20, 10)).toBe(false);
+  });
+  it("accounts for rotation", () => {
+    // 90 long x 10 deep: fits along X (±45 < 50) but not rotated 90°
+    // (±45 > 40 in the Z direction)
+    expect(rectInsideRoom(w, 0, 0, 90, 10, 0)).toBe(true);
+    expect(rectInsideRoom(w, 0, 0, 90, 10, 90)).toBe(false);
   });
 });
 

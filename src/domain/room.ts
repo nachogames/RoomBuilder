@@ -166,6 +166,33 @@ export function setJutDepthSymmetric(
   return null;
 }
 
+/** True only if the whole (optionally rotated) footprint is inside the room. */
+export function rectInsideRoom(
+  walls: Pt[],
+  cx: number,
+  cz: number,
+  w: number,
+  d: number,
+  rotDeg = 0,
+): boolean {
+  const a = (rotDeg * Math.PI) / 180;
+  const ca = Math.cos(a);
+  const sa = Math.sin(a);
+  const hw = w / 2;
+  const hd = d / 2;
+  for (const [lx, lz] of [
+    [-hw, -hd],
+    [hw, -hd],
+    [hw, hd],
+    [-hw, hd],
+  ]) {
+    const px = cx + lx * ca - lz * sa;
+    const pz = cz + lx * sa + lz * ca;
+    if (!pointInRoom(walls, px, pz)) return false;
+  }
+  return true;
+}
+
 /** Ray-cast point-in-polygon (room interior test). */
 export function pointInRoom(walls: Pt[], px: number, pz: number): boolean {
   let inside = false;

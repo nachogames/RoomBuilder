@@ -6,7 +6,7 @@ import {
   centroid,
   setWallLength,
   setJutDepthSymmetric,
-  pointInRoom,
+  rectInsideRoom,
   wallEdges,
 } from "../domain/room";
 import { useUnits } from "../ui/units";
@@ -152,20 +152,27 @@ export function PlanView({
         room: { ...pr.room, walls: next },
       }));
     } else if (drag.kind === "carcass") {
-      // wall resistance: don't let the piece leave the room
-      if (!pointInRoom(walls, x, z)) return;
+      // wall resistance: the whole footprint must stay inside the room
+      const c = project.carcasses.find((k) => k.id === drag.id);
+      if (
+        c &&
+        !rectInsideRoom(walls, x, z, c.width, c.depth, c.rotationDeg)
+      )
+        return;
       setProject((pr) => ({
         ...pr,
-        carcasses: pr.carcasses.map((c) =>
-          c.id === drag.id ? { ...c, position: { x, z } } : c,
+        carcasses: pr.carcasses.map((k) =>
+          k.id === drag.id ? { ...k, position: { x, z } } : k,
         ),
       }));
     } else {
-      if (!pointInRoom(walls, x, z)) return;
+      const bx = project.refBoxes.find((k) => k.id === drag.id);
+      if (bx && !rectInsideRoom(walls, x, z, bx.width, bx.depth))
+        return;
       setProject((pr) => ({
         ...pr,
-        refBoxes: pr.refBoxes.map((b) =>
-          b.id === drag.id ? { ...b, position: { x, z } } : b,
+        refBoxes: pr.refBoxes.map((k) =>
+          k.id === drag.id ? { ...k, position: { x, z } } : k,
         ),
       }));
     }
