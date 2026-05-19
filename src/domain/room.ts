@@ -102,6 +102,85 @@ export function addJut(
   return out;
 }
 
+const unit = (a: Pt, b: Pt) => {
+  const l = dist(a, b) || 1;
+  return { x: (b.x - a.x) / l, z: (b.z - a.z) / l };
+};
+const cross2 = (
+  a: { x: number; z: number },
+  b: { x: number; z: number },
+) => a.x * b.z - a.z * b.x;
+
+/**
+ * If wall edge `i` is one of a jut's two perpendicular return walls, set
+ * BOTH returns to `len` (keeping their anchor corners on the main wall) so
+ * the jut stays square and symmetric. Returns new walls, or null if edge
+ * `i` isn't a jut return.
+ *
+ * Jut corner pattern: anchorA → faceA → faceB → anchorB
+ *   E_a = anchorA→faceA (return)  E_{a+1} = face   E_{a+2} = faceB→anchorB (return)
+ */
+export function setJutDepthSymmetric(
+  walls: Pt[],
+  i: number,
+  len: number,
+): Pt[] | null {
+  const n = walls.length;
+  if (n < 6 || len <= 0) return null;
+  const E = (k: number) =>
+    unit(walls[k % n], walls[(k + 1) % n]);
+  const perp = (k: number, m: number) =>
+    Math.abs(cross2(E(k), E(m))) > 0.9; // ~64°+ ⇒ treat as perpendicular
+  const para = (k: number, m: number) =>
+    Math.abs(cross2(E(k), E(m))) < 0.12;
+
+  for (const a of [i, (i - 2 + n) % n]) {
+    const anchorA = walls[a % n];
+    const anchorB = walls[(a + 3) % n];
+    // the two anchors must sit on one straight wall line (the jut's base),
+    // i.e. anchorA→anchorB is parallel to the main-wall stub before it
+    const onSameWall =
+      dist(anchorA, anchorB) > 1e-6 &&
+      Math.abs(cross2(E(a - 1 + n), unit(anchorA, anchorB))) < 0.12;
+    if (
+      perp(a, a + 1) &&
+      perp(a + 1, a + 2) &&
+      para(a, a + 2) &&
+      onSameWall &&
+      (a === i || (a + 2) % n === i)
+    ) {
+      const dA = unit(anchorA, walls[(a + 1) % n]);
+      const dB = unit(anchorB, walls[(a + 2) % n]);
+      const out = walls.map((p) => ({ ...p }));
+      out[(a + 1) % n] = {
+        x: anchorA.x + dA.x * len,
+        z: anchorA.z + dA.z * len,
+      };
+      out[(a + 2) % n] = {
+        x: anchorB.x + dB.x * len,
+        z: anchorB.z + dB.z * len,
+      };
+      return out;
+    }
+  }
+  return null;
+}
+
+/** Ray-cast point-in-polygon (room interior test). */
+export function pointInRoom(walls: Pt[], px: number, pz: number): boolean {
+  let inside = false;
+  for (let i = 0, j = walls.length - 1; i < walls.length; j = i++) {
+    const a = walls[i];
+    const b = walls[j];
+    if (
+      a.z > pz !== b.z > pz &&
+      px < ((b.x - a.x) * (pz - a.z)) / (b.z - a.z) + a.x
+    )
+      inside = !inside;
+  }
+  return inside;
+}
+
 /** Reference geometry for the 3D scene: a slab per wall edge + a flat
  *  baseboard band per edge, offset inward toward the room centroid. */
 export function roomReferenceSlabs(room: Room): RefSlab[] {

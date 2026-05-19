@@ -5,6 +5,8 @@ import {
   baseboardLengthInches,
   centroid,
   setWallLength,
+  setJutDepthSymmetric,
+  pointInRoom,
   wallEdges,
 } from "../domain/room";
 import { useUnits } from "../ui/units";
@@ -148,6 +150,8 @@ export function PlanView({
         room: { ...pr.room, walls: next },
       }));
     } else if (drag.kind === "carcass") {
+      // wall resistance: don't let the piece leave the room
+      if (!pointInRoom(walls, x, z)) return;
       setProject((pr) => ({
         ...pr,
         carcasses: pr.carcasses.map((c) =>
@@ -155,6 +159,7 @@ export function PlanView({
         ),
       }));
     } else {
+      if (!pointInRoom(walls, x, z)) return;
       setProject((pr) => ({
         ...pr,
         refBoxes: pr.refBoxes.map((b) =>
@@ -478,7 +483,10 @@ export function PlanView({
                         ...pr,
                         room: {
                           ...pr.room,
-                          walls: setWallLength(pr.room.walls, i, n),
+                          // jut returns stay symmetric; otherwise resize edge
+                          walls:
+                            setJutDepthSymmetric(pr.room.walls, i, n) ??
+                            setWallLength(pr.room.walls, i, n),
                         },
                       })),
                     )

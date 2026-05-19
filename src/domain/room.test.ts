@@ -2,8 +2,10 @@ import { describe, it, expect } from "vitest";
 import {
   addJut,
   baseboardLengthInches,
+  pointInRoom,
   polygonPerimeterInches,
   roomReferenceSlabs,
+  setJutDepthSymmetric,
   setWallLength,
 } from "./room";
 import { defaultProject, rectWalls } from "./defaults";
@@ -66,6 +68,49 @@ describe("addJut (precise 90° rectangular jut)", () => {
   it("is a no-op for zero/!valid depth or empty span", () => {
     expect(addJut(walls, 0, 20, 20, 6, "out")).toHaveLength(4);
     expect(addJut(walls, 0, 10, 30, 0, "out")).toHaveLength(4);
+  });
+});
+
+describe("setJutDepthSymmetric", () => {
+  const base = addJut(rectWalls(100, 80), 0, 20, 40, 6, "out");
+  // edges: E1 and E3 are the two perpendicular returns
+
+  it("sets both returns to the same length, face stays parallel", () => {
+    const w = setJutDepthSymmetric(base, 1, 10)!;
+    expect(w).not.toBeNull();
+    const elen = (k: number) =>
+      Math.hypot(
+        w[(k + 1) % w.length].x - w[k].x,
+        w[(k + 1) % w.length].z - w[k].z,
+      );
+    expect(elen(1)).toBeCloseTo(10, 6);
+    expect(elen(3)).toBeCloseTo(10, 6);
+    // face Q1->Q2 still axis-aligned (equal z)
+    expect(w[2].z).toBeCloseTo(w[3].z, 6);
+  });
+
+  it("editing the OTHER return is also symmetric", () => {
+    const w = setJutDepthSymmetric(base, 3, 9)!;
+    const elen = (k: number) =>
+      Math.hypot(
+        w[(k + 1) % w.length].x - w[k].x,
+        w[(k + 1) % w.length].z - w[k].z,
+      );
+    expect(elen(1)).toBeCloseTo(9, 6);
+    expect(elen(3)).toBeCloseTo(9, 6);
+  });
+
+  it("returns null for a normal (non-return) wall", () => {
+    expect(setJutDepthSymmetric(rectWalls(100, 80), 0, 30)).toBeNull();
+  });
+});
+
+describe("pointInRoom", () => {
+  const w = rectWalls(100, 80);
+  it("is true inside, false outside", () => {
+    expect(pointInRoom(w, 0, 0)).toBe(true);
+    expect(pointInRoom(w, 200, 0)).toBe(false);
+    expect(pointInRoom(w, 0, 100)).toBe(false);
   });
 });
 

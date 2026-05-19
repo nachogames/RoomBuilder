@@ -18,6 +18,7 @@ import {
 } from "../domain/defaults";
 import { evenlySpacedShelves } from "../domain/shelves";
 import { buildProject } from "../geometry";
+import { seatRunnerOnCarcasses } from "../geometry/runner";
 import { buildCutList } from "../cutlist";
 import { buildPocketPlan } from "../pockets/plan";
 import { buildBom } from "../bom/aggregate";
@@ -691,6 +692,21 @@ function Workspace({
                   />
                 </div>
               ))}
+              <button
+                title="Set this runner flush on top of the carcasses it spans"
+                onClick={() =>
+                  setProject((p) => ({
+                    ...p,
+                    runners: p.runners.map((x) =>
+                      x.id === r.id
+                        ? { ...x, ...seatRunnerOnCarcasses(x, p.carcasses) }
+                        : x,
+                    ),
+                  }))
+                }
+              >
+                Sit on cabinets
+              </button>
               <button
                 onClick={() =>
                   setProject((p) => ({

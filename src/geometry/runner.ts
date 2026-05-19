@@ -46,6 +46,24 @@ export function runnerLayout(
   };
 }
 
+/** Seat a runner flush on top of the carcasses it spans: underside height
+ *  = tallest spanned carcass, and centre it on their average depth/z. */
+export function seatRunnerOnCarcasses(
+  r: Runner,
+  carcasses: Carcass[],
+): Partial<Runner> {
+  const spanned = carcasses.filter((c) =>
+    r.spannedCarcassIds.includes(c.id),
+  );
+  if (spanned.length === 0) return {};
+  const top = Math.max(...spanned.map((c) => c.height));
+  const avgZ =
+    spanned.reduce((s, c) => s + c.position.z, 0) / spanned.length;
+  // runnerLayout adds nudge.z onto spanned[0].position.z
+  const nz = avgZ - spanned[0].position.z;
+  return { bottomHeight: top, nudge: { x: r.nudge?.x ?? 0, z: nz } };
+}
+
 export function buildRunner(
   r: Runner,
   carcasses: Carcass[],
