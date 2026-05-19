@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import type { Project, Pt } from "../domain/types";
-import { runnerLayout } from "../geometry/runner";
+import { groupAABB, translateGroup } from "../geometry/group";
 import {
   baseboardLengthInches,
   centroid,
@@ -24,7 +24,7 @@ type Drag =
       base: Pt[]; // wall snapshot at drag start
       spawn: boolean; // straight run -> spawn jut; jut face -> translate
     }
-  | { kind: "carcass" | "box"; id: string }
+  | { kind: "carcass" | "box" | "runner"; id: string }
   | null;
 
 /** Snap to a clean 1/4" so freehand wall edits land square. */
@@ -173,11 +173,40 @@ export function PlanView({
           k.id === drag.id ? { ...k, position: pos } : k,
         ),
       }));
+    } else if (drag.kind === "runner") {
+      const r = project.runners.find((k) => k.id === drag.id);
+      if (!r) return;
+      // desk group: clamp the union footprint (desktop incl. overhang + owned
+      // cabinets); whichever edge sticks out furthest is what the wall blocks.
+      const bb = groupAABB(r, project);
+      const w = bb.maxX - bb.minX;
+      const d = bb.maxZ - bb.minZ;
+      const ox = (bb.minX + bb.maxX) / 2 - r.position.x;
+      const oz = (bb.minZ + bb.maxZ) / 2 - r.position.z;
+      const ok = (px: number, pz: number) =>
+        rectInsideRoom(walls, px + ox, pz + oz, w, d, 0);
+      const p0 = r.position;
+      const pos = ok(x, z)
+        ? { x, z }
+        : ok(x, p0.z)
+          ? { x, z: p0.z }
+          : ok(p0.x, z)
+            ? { x: p0.x, z }
+            : p0;
+      if (pos === p0) return;
+      const t = translateGroup(r, project, pos.x - p0.x, pos.z - p0.z);
+      setProject((pr) => ({
+        ...pr,
+        runners: pr.runners.map((k) => (k.id === r.id ? t.runner : k)),
+        carcasses: pr.carcasses.map((k) =>
+          t.carcassPos[k.id] ? { ...k, position: t.carcassPos[k.id] } : k,
+        ),
+      }));
     } else {
       const bx = project.refBoxes.find((k) => k.id === drag.id);
       if (!bx) return;
       const ok = (px: number, pz: number) =>
-        rectInsideRoom(walls, px, pz, bx.width, bx.depth);
+        rectInsideRoom(walls, px, pz, bx.width, bx.depth, bx.rotationDeg);
       const p0 = bx.position;
       const pos = ok(x, z)
         ? { x, z }
@@ -319,36 +348,40 @@ export function PlanView({
           strokeWidth={S}
         />
 
-        {/* runners (read-only, follow carcasses) */}
-        {project.runners.map((r) => {
-          const Ly = runnerLayout(r, project.carcasses, project.catalog);
-          return (
-            <g key={r.id}>
-              <rect
-                x={Ly.worldLeft}
-                y={Ly.z - r.depth / 2}
-                width={Ly.length}
-                height={r.depth}
-                fill="#caa46a55"
-                stroke="#caa46a"
-                strokeWidth={S}
-                style={{ cursor: "pointer" }}
-                onPointerDown={() => onSelect(r.id)}
-              />
-              {showDims && (
-                <text
-                  className="dim ro"
-                  x={Ly.worldLeft + Ly.length / 2}
-                  y={Ly.z - r.depth / 2 - fontPx * 0.4}
-                  fontSize={fontPx}
-                  textAnchor="middle"
-                >
-                  {r.label}: {fmt(Ly.length)} (auto)
-                </text>
-              )}
-            </g>
-          );
-        })}
+        {/* runners / desktops (draggable; drags the desk group) */}
+        {project.runners.map((r) => (
+          <g
+            key={r.id}
+            transform={`rotate(${r.rotationDeg} ${r.position.x} ${r.position.z})`}
+            style={{ cursor: "grab" }}
+            onPointerDown={(e) => {
+              (e.target as Element).setPointerCapture?.(e.pointerId);
+              onSelect(r.id);
+              setDrag({ kind: "runner", id: r.id });
+            }}
+          >
+            <rect
+              x={r.position.x - r.length / 2}
+              y={r.position.z - r.depth / 2}
+              width={r.length}
+              height={r.depth}
+              fill="#caa46a55"
+              stroke="#caa46a"
+              strokeWidth={S}
+            />
+            {showDims && (
+              <text
+                className="dim ro"
+                x={r.position.x}
+                y={r.position.z - r.depth / 2 - fontPx * 0.4}
+                fontSize={fontPx}
+                textAnchor="middle"
+              >
+                {r.label}: {fmt(r.length)}
+              </text>
+            )}
+          </g>
+        ))}
 
         {/* carcasses */}
         {project.carcasses.map((cc) => (
@@ -439,6 +472,7 @@ export function PlanView({
         {project.refBoxes.map((b) => (
           <g
             key={b.id}
+            transform={`rotate(${b.rotationDeg} ${b.position.x} ${b.position.z})`}
             style={{ cursor: "grab" }}
             onPointerDown={(e) => {
               (e.target as Element).setPointerCapture?.(e.pointerId);

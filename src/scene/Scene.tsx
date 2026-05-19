@@ -40,7 +40,7 @@ function CarcassGroup({
   );
   return (
     <group
-      position={[carcass.position.x, 0, carcass.position.z]}
+      position={[carcass.position.x, carcass.baseHeight ?? 0, carcass.position.z]}
       rotation={[0, (carcass.rotationDeg * Math.PI) / 180, 0]}
     >
       {parts.map((p) => (
@@ -51,19 +51,26 @@ function CarcassGroup({
 }
 
 function RunnerMeshes({ project }: { project: Project }) {
-  const parts = useMemo(() => {
-    const out: Part[] = [];
-    for (const r of project.runners) {
-      out.push(
-        ...buildRunner(r, project.carcasses, project.catalog).parts,
-      );
-    }
-    return out;
-  }, [project]);
+  const groups = useMemo(
+    () =>
+      project.runners.map((r) => ({
+        r,
+        parts: buildRunner(r, project.carcasses, project.catalog).parts,
+      })),
+    [project],
+  );
   return (
     <>
-      {parts.map((p) => (
-        <PartMesh key={p.id} part={p} />
+      {groups.map(({ r, parts }) => (
+        <group
+          key={r.id}
+          position={[r.position.x, r.baseHeight ?? 0, r.position.z]}
+          rotation={[0, (r.rotationDeg * Math.PI) / 180, 0]}
+        >
+          {parts.map((p) => (
+            <PartMesh key={p.id} part={p} />
+          ))}
+        </group>
       ))}
     </>
   );
@@ -75,7 +82,12 @@ function RefBoxes({ project }: { project: Project }) {
       {project.refBoxes.map((b) => (
         <mesh
           key={b.id}
-          position={[b.position.x, b.height / 2, b.position.z]}
+          position={[
+            b.position.x,
+            (b.baseHeight ?? 0) + b.height / 2,
+            b.position.z,
+          ]}
+          rotation={[0, (b.rotationDeg * Math.PI) / 180, 0]}
         >
           <boxGeometry args={[b.width, b.height, b.depth]} />
           <meshStandardMaterial

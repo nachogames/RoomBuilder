@@ -49,6 +49,7 @@ export function defaultBookcase(): Carcass {
     shelves: [],
     position: { x: 0, z: 0 },
     rotationDeg: 0,
+    baseHeight: 0,
   };
   base.shelves = evenlySpacedShelves(base, defaultCatalog(), 3, "pocket-screw");
   return base;
@@ -60,12 +61,13 @@ export function defaultRunner(spanned: string[]): Runner {
     label: "Runner shelf",
     boardMaterialId: PINE_2x12,
     spannedCarcassIds: spanned,
-    bottomHeight: 72,
+    length: 60,
     depth: 11.25,
-    overhangEachEnd: 1,
+    position: { x: 0, z: 0 },
+    rotationDeg: 0,
+    baseHeight: 72,
     fastening: "pocket-screw",
     supports: [],
-    nudge: { x: 0, z: 0 },
   };
 }
 
@@ -99,6 +101,8 @@ export function defaultRefBox(): RefBox {
     height: 12,
     depth: 24,
     position: { x: 0, z: 24 },
+    rotationDeg: 0,
+    baseHeight: 0,
   };
 }
 
@@ -122,13 +126,15 @@ export function deskAssembly(): { carcasses: Carcass[]; runner: Runner } {
     label: "Desk cabinet R",
     position: { x: 24, z: 0 },
   };
+  // cabinets at x ±24, width 18 → outer extent ∓33; +2" overhang each end
   const runner: Runner = {
     ...defaultRunner([left.id, right.id]),
     label: "Desk top",
     boardMaterialId: PLY_34,
-    bottomHeight: 28.5,
+    length: 70,
     depth: 24,
-    overhangEachEnd: 2,
+    position: { x: 0, z: 0 },
+    baseHeight: 28.5,
     fastening: "screw-through",
   };
   return { carcasses: [left, right], runner };
@@ -154,6 +160,51 @@ export function defaultProject(): Project {
   };
 }
 
+/** Upgrade a legacy (auto-derived) runner to the explicit position/length
+ *  model, preserving its on-screen geometry. New-shape runners pass through. */
+export function migrateRunner(
+  r: Record<string, unknown>,
+  carcasses: Carcass[],
+): Runner {
+  const hasNew =
+    r.position !== undefined && typeof r.length === "number";
+  if (hasNew) {
+    return {
+      ...(r as unknown as Runner),
+      rotationDeg: (r.rotationDeg as number) ?? 0,
+      baseHeight: (r.baseHeight as number) ?? 0,
+    };
+  }
+  const spannedIds = (r.spannedCarcassIds as string[]) ?? [];
+  const spanned = carcasses.filter((c) => spannedIds.includes(c.id));
+  const overhang = (r.overhangEachEnd as number) ?? 0;
+  const nudge = (r.nudge as { x: number; z: number }) ?? { x: 0, z: 0 };
+  const bottomHeight = (r.bottomHeight as number) ?? 0;
+  let worldLeft = -30;
+  let worldRight = 30;
+  let z = 0;
+  if (spanned.length) {
+    const lefts = spanned.map((c) => c.position.x - c.width / 2);
+    const rights = spanned.map((c) => c.position.x + c.width / 2);
+    worldLeft = Math.min(...lefts) - overhang + nudge.x;
+    worldRight = Math.max(...rights) + overhang + nudge.x;
+    z = spanned[0].position.z + nudge.z;
+  }
+  return {
+    id: r.id as string,
+    label: r.label as string,
+    boardMaterialId: r.boardMaterialId as string,
+    spannedCarcassIds: spannedIds,
+    length: worldRight - worldLeft,
+    depth: (r.depth as number) ?? 11.25,
+    position: { x: (worldLeft + worldRight) / 2, z },
+    rotationDeg: 0,
+    baseHeight: bottomHeight,
+    fastening: (r.fastening as Runner["fastening"]) ?? "pocket-screw",
+    supports: (r.supports as Runner["supports"]) ?? [],
+  };
+}
+
 /** Fill in fields that older saved projects may lack. */
 export function normalizeProject(p: Project): Project {
   return {
@@ -171,10 +222,17 @@ export function normalizeProject(p: Project): Project {
           ? { height: 3.5, thickness: 0.5 }
           : p.room.baseboard,
     },
-    runners: (p.runners ?? []).map((r) => ({
-      ...r,
-      nudge: r.nudge ?? { x: 0, z: 0 },
+    carcasses: (p.carcasses ?? []).map((c) => ({
+      ...c,
+      baseHeight: c.baseHeight ?? 0,
     })),
-    refBoxes: p.refBoxes ?? [],
+    runners: (p.runners ?? []).map((r) =>
+      migrateRunner(r as unknown as Record<string, unknown>, p.carcasses ?? []),
+    ),
+    refBoxes: (p.refBoxes ?? []).map((b) => ({
+      ...b,
+      rotationDeg: b.rotationDeg ?? 0,
+      baseHeight: b.baseHeight ?? 0,
+    })),
   };
 }

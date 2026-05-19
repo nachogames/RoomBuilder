@@ -18,7 +18,7 @@ import {
 } from "../domain/defaults";
 import { evenlySpacedShelves } from "../domain/shelves";
 import { buildProject } from "../geometry";
-import { seatRunnerOnCarcasses } from "../geometry/runner";
+import { snapHeight } from "../geometry/stacking";
 import { buildCutList } from "../cutlist";
 import { buildPocketPlan } from "../pockets/plan";
 import { buildBom } from "../bom/aggregate";
@@ -55,6 +55,58 @@ const SUPPORT_KINDS: readonly SupportKind[] = [
   "cleat",
 ];
 type Tab = "3D" | "Plan" | "Cut list" | "Pocket plan" | "Materials";
+
+/** Placement controls shared by carcasses, runners (desktops) and totes. */
+interface Placeable {
+  id: string;
+  position: { x: number; z: number };
+  rotationDeg: number;
+  baseHeight?: number;
+}
+function PlacementFields({
+  obj,
+  onPatch,
+  onSnap,
+}: {
+  obj: Placeable;
+  onPatch: (patch: Partial<Placeable>) => void;
+  onSnap: () => void;
+}) {
+  return (
+    <>
+      <div className="row" style={{ gap: 6 }}>
+        <StepField
+          label="Pos X"
+          value={obj.position.x}
+          onChange={(v) => onPatch({ position: { ...obj.position, x: v } })}
+        />
+        <StepField
+          label="Pos Y"
+          value={obj.baseHeight ?? 0}
+          onChange={(v) => onPatch({ baseHeight: v })}
+        />
+        <StepField
+          label="Pos Z"
+          value={obj.position.z}
+          onChange={(v) => onPatch({ position: { ...obj.position, z: v } })}
+        />
+      </div>
+      <NumField
+        label="Rotation°"
+        value={obj.rotationDeg}
+        step={15}
+        min={-360}
+        onChange={(v) => onPatch({ rotationDeg: v })}
+      />
+      <button
+        title="Set Pos Y to the top of whatever this sits over"
+        onClick={onSnap}
+      >
+        Snap to surface below
+      </button>
+    </>
+  );
+}
 
 export default function App() {
   const hist = useProjectHistory(defaultProject());
@@ -540,30 +592,19 @@ function Workspace({
                 allowZero
                 onChange={(v) => reflowShelves({ toeKickHeight: v })}
               />
-              <StepField
-                label="Pos X"
-                value={selected.position.x}
-                onChange={(v) =>
-                  patchSelected({
-                    position: { ...selected.position, x: v },
-                  })
+              <PlacementFields
+                obj={selected}
+                onPatch={patchSelected}
+                onSnap={() =>
+                  setProject((p) => ({
+                    ...p,
+                    carcasses: p.carcasses.map((c) =>
+                      c.id === selected.id
+                        ? { ...c, baseHeight: snapHeight(c, p) }
+                        : c,
+                    ),
+                  }))
                 }
-              />
-              <StepField
-                label="Pos Z"
-                value={selected.position.z}
-                onChange={(v) =>
-                  patchSelected({
-                    position: { ...selected.position, z: v },
-                  })
-                }
-              />
-              <NumField
-                label="Rotation°"
-                value={selected.rotationDeg}
-                step={15}
-                min={-360}
-                onChange={(v) => patchSelected({ rotationDeg: v })}
               />
               <DimField
                 label="Target opening"
@@ -649,22 +690,14 @@ function Workspace({
                 onChange={(v) => patchRunner(r.id, { boardMaterialId: v })}
               />
               <DimField
-                label="Top height"
-                value={r.bottomHeight}
-                onChange={(v) => patchRunner(r.id, { bottomHeight: v })}
+                label="Length"
+                value={r.length}
+                onChange={(v) => patchRunner(r.id, { length: v })}
               />
               <DimField
                 label="Depth"
                 value={r.depth}
                 onChange={(v) => patchRunner(r.id, { depth: v })}
-              />
-              <DimField
-                label="Overhang"
-                value={r.overhangEachEnd}
-                allowZero
-                onChange={(v) =>
-                  patchRunner(r.id, { overhangEachEnd: v })
-                }
               />
               <SelectField
                 label="Fastening"
@@ -672,18 +705,18 @@ function Workspace({
                 options={RUNNER_FASTEN}
                 onChange={(v) => patchRunner(r.id, { fastening: v })}
               />
-              <StepField
-                label="Nudge X"
-                value={r.nudge.x}
-                onChange={(v) =>
-                  patchRunner(r.id, { nudge: { ...r.nudge, x: v } })
-                }
-              />
-              <StepField
-                label="Nudge Z"
-                value={r.nudge.z}
-                onChange={(v) =>
-                  patchRunner(r.id, { nudge: { ...r.nudge, z: v } })
+              <PlacementFields
+                obj={r}
+                onPatch={(patch) => patchRunner(r.id, patch)}
+                onSnap={() =>
+                  setProject((p) => ({
+                    ...p,
+                    runners: p.runners.map((x) =>
+                      x.id === r.id
+                        ? { ...x, baseHeight: snapHeight(x, p) }
+                        : x,
+                    ),
+                  }))
                 }
               />
               <div className="label" style={{ margin: "6px 0 2px" }}>
@@ -769,21 +802,6 @@ function Workspace({
                 </div>
               ))}
               <button
-                title="Set this runner flush on top of the carcasses it spans"
-                onClick={() =>
-                  setProject((p) => ({
-                    ...p,
-                    runners: p.runners.map((x) =>
-                      x.id === r.id
-                        ? { ...x, ...seatRunnerOnCarcasses(x, p.carcasses) }
-                        : x,
-                    ),
-                  }))
-                }
-              >
-                Sit on cabinets
-              </button>
-              <button
                 onClick={() =>
                   setProject((p) => ({
                     ...p,
@@ -826,23 +844,27 @@ function Workspace({
                   }
                 />
               ))}
-              {(["x", "z"] as const).map((k) => (
-                <StepField
-                  key={k}
-                  label={`Pos ${k.toUpperCase()}`}
-                  value={b.position[k]}
-                  onChange={(v) =>
-                    setProject((p) => ({
-                      ...p,
-                      refBoxes: p.refBoxes.map((x) =>
-                        x.id === b.id
-                          ? { ...x, position: { ...x.position, [k]: v } }
-                          : x,
-                      ),
-                    }))
-                  }
-                />
-              ))}
+              <PlacementFields
+                obj={b}
+                onPatch={(patch) =>
+                  setProject((p) => ({
+                    ...p,
+                    refBoxes: p.refBoxes.map((x) =>
+                      x.id === b.id ? { ...x, ...patch } : x,
+                    ),
+                  }))
+                }
+                onSnap={() =>
+                  setProject((p) => ({
+                    ...p,
+                    refBoxes: p.refBoxes.map((x) =>
+                      x.id === b.id
+                        ? { ...x, baseHeight: snapHeight(x, p) }
+                        : x,
+                    ),
+                  }))
+                }
+              />
               <button
                 onClick={() =>
                   setProject((p) => ({

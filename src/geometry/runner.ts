@@ -8,60 +8,37 @@ export interface RunnerLayout {
   length: number;
   z: number;
   thickness: number;
-  /** x-intervals where a spanned carcass bears the runner */
+  /** x-intervals where an owned cabinet bears the runner (for sag) */
   bearingIntervals: Array<[number, number]>;
   /** absolute x of each point support */
   supportXs: number[];
 }
 
+/** Geometry of a runner from its OWN explicit position/length. Bearing
+ *  intervals still come from the owned cabinets so the sag check works. */
 export function runnerLayout(
   r: Runner,
   carcasses: Carcass[],
-  catalog: StockCatalog,
+  _catalog: StockCatalog,
 ): RunnerLayout {
-  const spanned = carcasses.filter((c) =>
-    r.spannedCarcassIds.includes(c.id),
-  );
-  const intervals: Array<[number, number]> = spanned.map((c) => [
+  const worldLeft = r.position.x - r.length / 2;
+  const worldRight = r.position.x + r.length / 2;
+  const owned = carcasses.filter((c) => r.spannedCarcassIds.includes(c.id));
+  const bearingIntervals: Array<[number, number]> = owned.map((c) => [
     c.position.x - c.width / 2,
     c.position.x + c.width / 2,
   ]);
-  const minLeft = Math.min(...intervals.map((i) => i[0]));
-  const maxRight = Math.max(...intervals.map((i) => i[1]));
-  const nx = r.nudge?.x ?? 0;
-  const nz = r.nudge?.z ?? 0;
-  const worldLeft = minLeft - r.overhangEachEnd + nx;
-  const worldRight = maxRight + r.overhangEachEnd + nx;
-  const z = (spanned[0]?.position.z ?? 0) + nz;
-  const thickness = materialThickness(catalog.materials, r.boardMaterialId);
+  const thickness = materialThickness(_catalog.materials, r.boardMaterialId);
   const supportXs = r.supports.map((s) => worldLeft + s.offsetFromLeft);
   return {
     worldLeft,
     worldRight,
-    length: worldRight - worldLeft,
-    z,
+    length: r.length,
+    z: r.position.z,
     thickness,
-    bearingIntervals: intervals,
+    bearingIntervals,
     supportXs,
   };
-}
-
-/** Seat a runner flush on top of the carcasses it spans: underside height
- *  = tallest spanned carcass, and centre it on their average depth/z. */
-export function seatRunnerOnCarcasses(
-  r: Runner,
-  carcasses: Carcass[],
-): Partial<Runner> {
-  const spanned = carcasses.filter((c) =>
-    r.spannedCarcassIds.includes(c.id),
-  );
-  if (spanned.length === 0) return {};
-  const top = Math.max(...spanned.map((c) => c.height));
-  const avgZ =
-    spanned.reduce((s, c) => s + c.position.z, 0) / spanned.length;
-  // runnerLayout adds nudge.z onto spanned[0].position.z
-  const nz = avgZ - spanned[0].position.z;
-  return { bottomHeight: top, nudge: { x: r.nudge?.x ?? 0, z: nz } };
 }
 
 export function buildRunner(
@@ -76,8 +53,11 @@ export function buildRunner(
   const pid = () => `${r.id}-p${++n}`;
   let j = 0;
   const jid = () => `${r.id}-j${++j}`;
+  const base = r.baseHeight ?? 0;
 
-  const cx = (L.worldLeft + L.worldRight) / 2;
+  // Parts are runner-local: origin at the board centre, floor at local
+  // y = -base. Scene wraps these in a group at [position.x, base, position.z]
+  // rotated by rotationDeg.
   const boardId = pid();
   parts.push({
     id: boardId,
@@ -86,15 +66,13 @@ export function buildRunner(
     label: r.label,
     materialId: r.boardMaterialId,
     thickness: L.thickness,
-    length: Math.max(L.length, r.depth),
-    width: Math.min(L.length, r.depth),
+    length: Math.max(r.length, r.depth),
+    width: Math.min(r.length, r.depth),
     grainMatters: true,
-    box: { x: L.length, y: L.thickness, z: r.depth },
-    center: { x: cx, y: r.bottomHeight + L.thickness / 2, z: L.z },
-    world: true,
+    box: { x: r.length, y: L.thickness, z: r.depth },
+    center: { x: 0, y: L.thickness / 2, z: 0 },
   });
 
-  // fasten the runner to each spanned carcass
   for (const c of carcasses.filter((c) =>
     r.spannedCarcassIds.includes(c.id),
   )) {
@@ -112,9 +90,9 @@ export function buildRunner(
     });
   }
 
-  // supports
+  // supports: local x measured from the board centre
   for (const s of r.supports) {
-    const sx = L.worldLeft + s.offsetFromLeft;
+    const sx = -r.length / 2 + s.offsetFromLeft;
     if (s.kind === "bracket") {
       joints.push({
         id: jid(),
@@ -130,15 +108,14 @@ export function buildRunner(
     let box: { x: number; y: number; z: number };
     let center: { x: number; y: number; z: number };
     if (s.kind === "leg") {
-      box = { x: 1.5, y: r.bottomHeight, z: 1.5 };
-      center = { x: sx, y: r.bottomHeight / 2, z: L.z };
+      box = { x: 1.5, y: base, z: 1.5 };
+      center = { x: sx, y: -base / 2, z: 0 };
     } else if (s.kind === "cleat") {
       box = { x: 6, y: 1.5, z: r.depth };
-      center = { x: sx, y: r.bottomHeight - 0.75, z: L.z };
+      center = { x: sx, y: -0.75, z: 0 };
     } else {
-      // corbel: triangular-ish bracket, approximated as a wedge box
       box = { x: 1.5, y: 6, z: 6 };
-      center = { x: sx, y: r.bottomHeight - 3, z: L.z };
+      center = { x: sx, y: -3, z: 0 };
     }
     parts.push({
       id: sid,
@@ -152,7 +129,6 @@ export function buildRunner(
       grainMatters: false,
       box,
       center,
-      world: true,
     });
     joints.push({
       id: jid(),

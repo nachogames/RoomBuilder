@@ -109,6 +109,8 @@ export interface Carcass {
   /** placement on the room floor (top-down), inches from room origin */
   position: { x: Inches; z: Inches };
   rotationDeg: number;
+  /** underside elevation above the floor; default 0 */
+  baseHeight?: Inches;
 }
 
 export type SupportKind = "corbel" | "bracket" | "leg" | "cleat";
@@ -125,23 +127,25 @@ export type RunnerFastening = Extract<
   "pocket-screw" | "screw-through" | "bracket"
 >;
 
-/** A board spanning one or more carcasses (e.g. a 2x12 across two bookcases). */
+/** A board (e.g. a 2x12 desktop). First-class positioned object: its size and
+ *  location are explicit, not derived from the carcasses under it. */
 export interface Runner {
   id: string;
   label: string;
   boardMaterialId: string;
-  /** ids of carcasses this runner bears on, left-to-right */
+  /** owned cabinets: the desk group + sag/support bearing (NOT sizing) */
   spannedCarcassIds: string[];
-  /** underside height above the floor */
-  bottomHeight: Inches;
+  /** X extent of the board */
+  length: Inches;
   /** depth (front-to-back) of the runner board */
   depth: Inches;
-  /** horizontal overhang past the outer carcasses, each end */
-  overhangEachEnd: Inches;
+  /** center on the room floor (top-down), inches from room origin */
+  position: { x: Inches; z: Inches };
+  rotationDeg: number;
+  /** underside elevation above the floor; default 0 */
+  baseHeight?: Inches;
   fastening: RunnerFastening;
   supports: Support[];
-  /** shift the whole runner relative to the carcasses it spans */
-  nudge: { x: Inches; z: Inches };
 }
 
 /** A plain reference object (e.g. a storage tote) for fit-checking only. */
@@ -152,6 +156,8 @@ export interface RefBox {
   height: Inches;
   depth: Inches;
   position: { x: Inches; z: Inches };
+  rotationDeg: number;
+  baseHeight?: Inches;
 }
 
 export type Units = "in" | "mm";

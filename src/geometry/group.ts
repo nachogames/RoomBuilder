@@ -1,0 +1,104 @@
+import type { Carcass, Project, Runner } from "../domain/types";
+
+export interface AABB {
+  minX: number;
+  maxX: number;
+  minZ: number;
+  maxZ: number;
+}
+
+/** Carcasses the desktop owns (drag-as-group + sag bearing). */
+export function ownedCarcasses(r: Runner, project: Project): Carcass[] {
+  return project.carcasses.filter((c) => r.spannedCarcassIds.includes(c.id));
+}
+
+/** Corners of a rect (centre cx/cz, size w×d) rotated by `deg` about its centre. */
+export function corners(
+  cx: number,
+  cz: number,
+  w: number,
+  d: number,
+  deg: number,
+): Array<[number, number]> {
+  const rad = (deg * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const hw = w / 2;
+  const hd = d / 2;
+  return [
+    [-hw, -hd],
+    [hw, -hd],
+    [hw, hd],
+    [-hw, hd],
+  ].map(([dx, dz]) => [
+    cx + dx * cos - dz * sin,
+    cz + dx * sin + dz * cos,
+  ]);
+}
+
+/** Axis-aligned bounding box of one rotated rect. */
+export function rectAABB(
+  cx: number,
+  cz: number,
+  w: number,
+  d: number,
+  deg: number,
+): AABB {
+  const pts = corners(cx, cz, w, d, deg);
+  const xs = pts.map((p) => p[0]);
+  const zs = pts.map((p) => p[1]);
+  return {
+    minX: Math.min(...xs),
+    maxX: Math.max(...xs),
+    minZ: Math.min(...zs),
+    maxZ: Math.max(...zs),
+  };
+}
+
+/** Axis-aligned bounding box of the whole desk group: the desktop (incl.
+ *  overhang, since length/depth already express it) unioned with every owned
+ *  cabinet, each rotation-aware. */
+export function groupAABB(r: Runner, project: Project): AABB {
+  const pts: Array<[number, number]> = [
+    ...corners(r.position.x, r.position.z, r.length, r.depth, r.rotationDeg),
+  ];
+  for (const c of ownedCarcasses(r, project)) {
+    pts.push(
+      ...corners(c.position.x, c.position.z, c.width, c.depth, c.rotationDeg),
+    );
+  }
+  const xs = pts.map((p) => p[0]);
+  const zs = pts.map((p) => p[1]);
+  return {
+    minX: Math.min(...xs),
+    maxX: Math.max(...xs),
+    minZ: Math.min(...zs),
+    maxZ: Math.max(...zs),
+  };
+}
+
+export interface GroupTranslation {
+  runner: Runner;
+  /** new positions for owned cabinets, keyed by carcass id */
+  carcassPos: Record<string, { x: number; z: number }>;
+}
+
+/** Shift the desktop and all owned cabinets by the same delta. Pure. */
+export function translateGroup(
+  r: Runner,
+  project: Project,
+  dx: number,
+  dz: number,
+): GroupTranslation {
+  const carcassPos: Record<string, { x: number; z: number }> = {};
+  for (const c of ownedCarcasses(r, project)) {
+    carcassPos[c.id] = { x: c.position.x + dx, z: c.position.z + dz };
+  }
+  return {
+    runner: {
+      ...r,
+      position: { x: r.position.x + dx, z: r.position.z + dz },
+    },
+    carcassPos,
+  };
+}
