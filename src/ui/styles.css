@@ -54,6 +54,24 @@ th { color: #9a9aa6; font-weight: 600; }
 .checks .warn { color: #ffd27a; }
 .checks .ok { color: #8ae0a0; }
 footer { padding: 6px 12px; color: #888; background: #1d1d22; border-top: 1px solid #2c2c33; min-height: 26px; }
+.browser { border-bottom: 1px solid #2c2c33; padding-bottom: 8px; margin-bottom: 8px; }
+.tree-group { margin-top: 4px; }
+.tree-head { display: flex; align-items: center; justify-content: space-between; }
+.tree-head > button:first-child {
+  background: none; border: none; color: #9a9aa6; padding: 4px 2px;
+  font-size: 12px; text-transform: uppercase; letter-spacing: .4px; cursor: pointer;
+}
+.tree-head span button, .tree-head > button:last-child { font-size: 11px; padding: 2px 6px; }
+.tree-row {
+  display: block; width: 100%; text-align: left; background: none;
+  border: none; color: #d4d4dc; padding: 4px 8px; border-radius: 5px;
+  cursor: pointer; font-size: 13px;
+}
+.tree-row:hover { background: #24242b; }
+.tree-row.on { background: #f0a; color: #1a1a1a; }
+.tree-row.sub { padding-left: 20px; color: #9a9aa6; font-size: 12px; }
+.inspector { }
+.inspector h3 { margin: 4px 0 6px; color: #f0a; font-size: 14px; }
 .sub { border: 1px solid #2c2c33; border-radius: 8px; padding: 8px; margin: 8px 0; background: #15151a; }
 .sub button { margin-top: 6px; }
 .label { color: #9a9aa6; font-size: 12px; }

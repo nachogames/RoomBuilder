@@ -88,17 +88,23 @@ function Workspace({
   canRedo: boolean;
 }) {
   const { fmt } = useUnits();
-  const [selId, setSelId] = useState<string>(
-    project.carcasses[0]?.id ?? "",
-  );
+  const [sel, setSel] = useState<string>("room");
+  const setSelId = setSel; // tree selection drives the inspector
+  const [collapse, setCollapse] = useState<Record<string, boolean>>({});
   const [tab, setTab] = useState<Tab>("3D");
   const [showDims, setShowDims] = useState(true);
   const [savedNames, setSavedNames] = useState<string[]>([]);
   const [status, setStatus] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const selected =
-    project.carcasses.find((c) => c.id === selId) ?? project.carcasses[0];
+  const selected = project.carcasses.find((c) => c.id === sel);
+  const selRunner =
+    project.runners.find(
+      (r) => r.id === sel || sel.startsWith(`sup:${r.id}:`),
+    ) ?? null;
+  const selTote = project.refBoxes.find((b) => b.id === sel) ?? null;
+  const toggle = (k: string) =>
+    setCollapse((c) => ({ ...c, [k]: !c[k] }));
 
   const derived = useMemo(() => {
     const g = buildProject(project);
@@ -303,6 +309,93 @@ function Workspace({
 
       <div className="body">
         <aside className="panel">
+          <div className="browser">
+            <button
+              className={`tree-row ${sel === "room" ? "on" : ""}`}
+              onClick={() => setSel("room")}
+            >
+              ▸ Room
+            </button>
+
+            <div className="tree-group">
+              <div className="tree-head">
+                <button onClick={() => toggle("cases")}>
+                  {collapse.cases ? "▸" : "▾"} Bookcases (
+                  {project.carcasses.length})
+                </button>
+                <span>
+                  <button onClick={addBookcase}>+ Case</button>{" "}
+                  <button onClick={addDesk}>+ Desk</button>
+                </span>
+              </div>
+              {!collapse.cases &&
+                project.carcasses.map((c) => (
+                  <button
+                    key={c.id}
+                    className={`tree-row ${sel === c.id ? "on" : ""}`}
+                    onClick={() => setSel(c.id)}
+                  >
+                    ▫ {c.label}
+                  </button>
+                ))}
+            </div>
+
+            <div className="tree-group">
+              <div className="tree-head">
+                <button onClick={() => toggle("runners")}>
+                  {collapse.runners ? "▸" : "▾"} Runners (
+                  {project.runners.length})
+                </button>
+                <button onClick={addRunner}>+ Runner</button>
+              </div>
+              {!collapse.runners &&
+                project.runners.map((r) => (
+                  <div key={r.id}>
+                    <button
+                      className={`tree-row ${sel === r.id ? "on" : ""}`}
+                      onClick={() => setSel(r.id)}
+                    >
+                      ▭ {r.label}
+                    </button>
+                    {r.supports.map((s, i) => (
+                      <button
+                        key={s.id}
+                        className={`tree-row sub ${
+                          sel === `sup:${r.id}:${s.id}` ? "on" : ""
+                        }`}
+                        onClick={() => setSel(`sup:${r.id}:${s.id}`)}
+                      >
+                        └ {s.kind} #{i + 1}
+                      </button>
+                    ))}
+                  </div>
+                ))}
+            </div>
+
+            <div className="tree-group">
+              <div className="tree-head">
+                <button onClick={() => toggle("totes")}>
+                  {collapse.totes ? "▸" : "▾"} Totes (
+                  {project.refBoxes.length})
+                </button>
+                <button onClick={addTote}>+ Tote</button>
+              </div>
+              {!collapse.totes &&
+                project.refBoxes.map((b) => (
+                  <button
+                    key={b.id}
+                    className={`tree-row ${sel === b.id ? "on" : ""}`}
+                    onClick={() => setSel(b.id)}
+                  >
+                    ▢ {b.label}
+                  </button>
+                ))}
+            </div>
+          </div>
+
+          <div className="inspector">
+          {sel === "room" && (
+          <>
           <div className="row">
             <h3>Room</h3>
           </div>
@@ -414,26 +507,12 @@ function Workspace({
               setProject((p) => ({ ...p, room: { ...p.room, walls } }))
             }
           />
+          </>
+          )}
 
-          <div className="row">
-            <h3>Carcasses</h3>
-            <span>
-              <button onClick={addBookcase}>+ Case</button>{" "}
-              <button onClick={addDesk}>+ Desk</button>
-            </span>
-          </div>
           {selected && (
             <>
-              <select
-                value={selected.id}
-                onChange={(e) => setSelId(e.target.value)}
-              >
-                {project.carcasses.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.label}
-                  </option>
-                ))}
-              </select>
+              <h3>{selected.label}</h3>
               <input
                 className="proj-name"
                 style={{ width: "100%", marginTop: 6 }}
@@ -552,12 +631,9 @@ function Workspace({
             </>
           )}
 
-          <div className="row">
-            <h3>Runners</h3>
-            <button onClick={addRunner}>+ Runner</button>
-          </div>
-          {project.runners.map((r) => (
+          {(selRunner ? [selRunner] : []).map((r) => (
             <div key={r.id} className="sub">
+              <h3>{r.label}</h3>
               <input
                 className="proj-name"
                 style={{ width: "100%" }}
@@ -720,11 +796,7 @@ function Workspace({
             </div>
           ))}
 
-          <div className="row">
-            <h3>Reference</h3>
-            <button onClick={addTote}>+ Tote</button>
-          </div>
-          {project.refBoxes.map((b) => (
+          {(selTote ? [selTote] : []).map((b) => (
             <div key={b.id} className="sub">
               <input
                 className="proj-name"
@@ -783,6 +855,10 @@ function Workspace({
               </button>
             </div>
           ))}
+          {sel !== "room" && !selected && !selRunner && !selTote && (
+            <p className="label">Select an item above to edit it.</p>
+          )}
+          </div>
         </aside>
 
         <main className="view">
@@ -869,6 +945,7 @@ function Workspace({
                 project={project}
                 setProject={setProject}
                 showDims={showDims}
+                onSelect={setSel}
               />
             )}
 

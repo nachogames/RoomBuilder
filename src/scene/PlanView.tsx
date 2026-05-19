@@ -50,10 +50,12 @@ export function PlanView({
   project,
   setProject,
   showDims,
+  onSelect,
 }: {
   project: Project;
   setProject: React.Dispatch<React.SetStateAction<Project>>;
   showDims: boolean;
+  onSelect: (id: string) => void;
 }) {
   const { fmt, parse, units } = useUnits();
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -305,6 +307,8 @@ export function PlanView({
                 fill="#caa46a55"
                 stroke="#caa46a"
                 strokeWidth={S}
+                style={{ cursor: "pointer" }}
+                onPointerDown={() => onSelect(r.id)}
               />
               {showDims && (
                 <text
@@ -329,6 +333,7 @@ export function PlanView({
               style={{ cursor: "grab" }}
               onPointerDown={(e) => {
                 (e.target as Element).setPointerCapture?.(e.pointerId);
+                onSelect(cc.id);
                 setDrag({ kind: "carcass", id: cc.id });
               }}
             >
@@ -412,6 +417,7 @@ export function PlanView({
             style={{ cursor: "grab" }}
             onPointerDown={(e) => {
               (e.target as Element).setPointerCapture?.(e.pointerId);
+              onSelect(b.id);
               setDrag({ kind: "box", id: b.id });
             }}
           >
