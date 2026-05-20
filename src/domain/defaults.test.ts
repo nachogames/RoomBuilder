@@ -4,6 +4,7 @@ import {
   defaultProject,
   defaultBookcase,
   defaultCatalog,
+  RUNNER_PROFILES,
 } from "./defaults";
 import { runnerLayout } from "../geometry/runner";
 
@@ -66,6 +67,11 @@ describe("normalizeProject carcass stacking defaults", () => {
     const n = normalizeProject(p);
     expect(n.refBoxes[0].rotationDeg).toBe(0);
     expect(n.refBoxes[0].baseHeight).toBe(0);
+  });
+
+  it("every runner profile maps to a material in defaultCatalog", () => {
+    const ids = new Set(defaultCatalog().materials.map((m) => m.id));
+    for (const p of RUNNER_PROFILES) expect(ids.has(p.materialId)).toBe(true);
   });
 
   it("preserves an explicit baseHeight", () => {

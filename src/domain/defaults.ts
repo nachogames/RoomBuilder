@@ -3,8 +3,31 @@ import { evenlySpacedShelves } from "./shelves";
 
 export const PLY_34 = "ply-0.75";
 export const PLY_25 = "ply-0.25";
+export const PLY_15 = "ply-1.5";
 export const PINE_1x12 = "pine-1x12";
 export const PINE_2x12 = "pine-2x12";
+export const PINE_2x10 = "pine-2x10";
+export const PINE_2x8 = "pine-2x8";
+export const PINE_2x6 = "pine-2x6";
+
+/** Quick-pick board profiles for the runner inspector. Each applies a
+ *  one-shot patch to `boardMaterialId` (and `depth` for lumber, which has a
+ *  fixed nominal width). Ply presets leave depth alone. */
+export interface RunnerProfile {
+  id: string;
+  label: string;
+  materialId: string;
+  /** lumber profiles fix the front-to-back depth; omitted for ply */
+  depth?: number;
+}
+export const RUNNER_PROFILES: RunnerProfile[] = [
+  { id: "2x12", label: "2x12", materialId: PINE_2x12, depth: 11.25 },
+  { id: "2x10", label: "2x10", materialId: PINE_2x10, depth: 9.25 },
+  { id: "2x8", label: "2x8", materialId: PINE_2x8, depth: 7.25 },
+  { id: "2x6", label: "2x6", materialId: PINE_2x6, depth: 5.5 },
+  { id: "ply34", label: '3/4" ply', materialId: PLY_34 },
+  { id: "ply15", label: '1-1/2" ply', materialId: PLY_15 },
+];
 
 export function defaultCatalog(): StockCatalog {
   return {
@@ -12,16 +35,24 @@ export function defaultCatalog(): StockCatalog {
     materials: [
       { id: PLY_34, name: '3/4" Birch Plywood', kind: "sheet", thickness: 0.75 },
       { id: PLY_25, name: '1/4" Plywood (back)', kind: "sheet", thickness: 0.25 },
+      { id: PLY_15, name: '1-1/2" Plywood', kind: "sheet", thickness: 1.5 },
       { id: PINE_1x12, name: '1x12 Pine (3/4")', kind: "board", thickness: 0.75 },
       { id: PINE_2x12, name: '2x12 Pine (1-1/2")', kind: "board", thickness: 1.5 },
+      { id: PINE_2x10, name: '2x10 Pine (1-1/2")', kind: "board", thickness: 1.5 },
+      { id: PINE_2x8, name: '2x8 Pine (1-1/2")', kind: "board", thickness: 1.5 },
+      { id: PINE_2x6, name: '2x6 Pine (1-1/2")', kind: "board", thickness: 1.5 },
     ],
     sheets: [
       { materialId: PLY_34, width: 48, length: 96 },
       { materialId: PLY_25, width: 48, length: 96 },
+      { materialId: PLY_15, width: 48, length: 96 },
     ],
     boards: [
       { materialId: PINE_1x12, width: 11.25, length: 96, nominal: "1x12" },
       { materialId: PINE_2x12, width: 11.25, length: 144, nominal: "2x12" },
+      { materialId: PINE_2x10, width: 9.25, length: 144, nominal: "2x10" },
+      { materialId: PINE_2x8, width: 7.25, length: 144, nominal: "2x8" },
+      { materialId: PINE_2x6, width: 5.5, length: 144, nominal: "2x6" },
     ],
   };
 }

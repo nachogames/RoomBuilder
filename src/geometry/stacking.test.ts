@@ -31,43 +31,104 @@ describe("objectTop", () => {
   });
 });
 
-describe("snapHeight", () => {
-  it("snaps a bookcase onto an overlapping desktop runner", () => {
-    const top = {
-      ...defaultRunner([]),
-      id: "TOP",
-      position: { x: 0, z: 0 },
-      length: 70,
-      depth: 24,
-      baseHeight: 28.5,
-    };
-    const shelf: Carcass = {
-      ...defaultBookcase(),
-      id: "S",
-      position: { x: 10, z: 0 },
-      width: 20,
-      depth: 11,
-    };
-    const p = projectWith([shelf], [top]);
-    expect(snapHeight(shelf, p)).toBeCloseTo(28.5 + 1.5, 6);
-  });
-
-  it("snaps a tote onto an overlapping carcass", () => {
+describe("snapHeight — surfaces at or below current Y", () => {
+  it("drops a tote (Y high) onto the highest shelf below it inside a bookcase", () => {
+    // Bookcase: toeKick 3, carcass 0.75 → interior floor 3.75. Three evenly
+    // spaced shelves inside a 72" cabinet give shelf tops at known Ys; we
+    // override shelves explicitly to make the test deterministic.
     const cab: Carcass = {
       ...defaultBookcase(),
       id: "CAB",
       position: { x: 0, z: 0 },
-      width: 24,
-      depth: 24,
-      height: 28.5,
-      baseHeight: 0,
+      width: 30,
+      depth: 12,
+      height: 72,
+      toeKickHeight: 3,
+      shelves: [
+        { offsetFromBottom: 20, attachment: "pocket-screw" },
+        { offsetFromBottom: 40, attachment: "pocket-screw" },
+        { offsetFromBottom: 60, attachment: "pocket-screw" },
+      ],
+    };
+    // 3/4" carcass + 3/4" shelves; interior floor at 3 + 0.75 = 3.75
+    // Shelf top Ys (absolute, baseHeight 0): 3.75 + 20 + 0.75 = 24.5,
+    // 44.5, 64.5. Cabinet top is 72.
+    const tote = {
+      ...defaultRefBox(),
+      id: "T",
+      position: { x: 0, z: 0 },
+      width: 10,
+      depth: 8,
+      baseHeight: 50, // sitting above the middle shelf, below the top one
+    };
+    expect(snapHeight(tote, projectWith([cab], [], [tote]))).toBeCloseTo(
+      44.5,
+      6,
+    );
+  });
+
+  it("snaps to the cabinet top when Pos Y is above every shelf", () => {
+    const cab: Carcass = {
+      ...defaultBookcase(),
+      id: "CAB",
+      position: { x: 0, z: 0 },
+      width: 30,
+      depth: 12,
+      height: 72,
+      shelves: [{ offsetFromBottom: 20, attachment: "pocket-screw" }],
     };
     const tote = {
       ...defaultRefBox(),
       id: "T",
       position: { x: 0, z: 0 },
-      width: 16,
-      depth: 16,
+      width: 10,
+      depth: 8,
+      baseHeight: 90,
+    };
+    expect(snapHeight(tote, projectWith([cab], [], [tote]))).toBeCloseTo(
+      72,
+      6,
+    );
+  });
+
+  it("returns 0 (floor) when current Y is below every overlapping surface", () => {
+    const cab: Carcass = {
+      ...defaultBookcase(),
+      id: "CAB",
+      position: { x: 0, z: 0 },
+      width: 30,
+      depth: 12,
+      height: 72,
+      shelves: [{ offsetFromBottom: 20, attachment: "pocket-screw" }],
+    };
+    const tote = {
+      ...defaultRefBox(),
+      id: "T",
+      position: { x: 0, z: 0 },
+      width: 10,
+      depth: 8,
+      baseHeight: 0,
+    };
+    expect(snapHeight(tote, projectWith([cab], [], [tote]))).toBe(0);
+  });
+
+  it("stays put when already sitting on a surface (epsilon)", () => {
+    const cab: Carcass = {
+      ...defaultBookcase(),
+      id: "CAB",
+      position: { x: 0, z: 0 },
+      width: 30,
+      depth: 12,
+      height: 28.5,
+      shelves: [],
+    };
+    const tote = {
+      ...defaultRefBox(),
+      id: "T",
+      position: { x: 0, z: 0 },
+      width: 10,
+      depth: 8,
+      baseHeight: 28.5,
     };
     expect(snapHeight(tote, projectWith([cab], [], [tote]))).toBeCloseTo(
       28.5,
@@ -75,41 +136,37 @@ describe("snapHeight", () => {
     );
   });
 
-  it("returns 0 when nothing overlaps below", () => {
-    const a: Carcass = { ...defaultBookcase(), id: "A", position: { x: -100, z: 0 } };
-    const b: Carcass = { ...defaultBookcase(), id: "B", position: { x: 100, z: 0 } };
-    expect(snapHeight(b, projectWith([a, b]))).toBe(0);
+  it("snaps a bookcase onto a desktop runner it overlaps (Y above runner top)", () => {
+    const top = {
+      ...defaultRunner([]),
+      id: "TOP",
+      position: { x: 0, z: 0 },
+      length: 70,
+      depth: 24,
+      baseHeight: 28.5, // top surface 30 (28.5 + 1.5)
+    };
+    const shelf: Carcass = {
+      ...defaultBookcase(),
+      id: "S",
+      position: { x: 10, z: 0 },
+      width: 20,
+      depth: 11,
+      baseHeight: 50,
+    };
+    expect(snapHeight(shelf, projectWith([shelf], [top]))).toBeCloseTo(30, 6);
   });
 
-  it("excludes the object itself", () => {
-    const only: Carcass = { ...defaultBookcase(), id: "ONLY" };
-    expect(snapHeight(only, projectWith([only]))).toBe(0);
-  });
-
-  it("picks the highest overlapping surface", () => {
-    const low: Carcass = {
+  it("excludes the target's own shelves and own surfaces", () => {
+    const cab: Carcass = {
       ...defaultBookcase(),
-      id: "LOW",
+      id: "CAB",
       position: { x: 0, z: 0 },
       width: 30,
-      depth: 30,
-      height: 20,
+      depth: 12,
+      height: 72,
+      shelves: [{ offsetFromBottom: 20, attachment: "pocket-screw" }],
+      baseHeight: 10,
     };
-    const high: Carcass = {
-      ...defaultBookcase(),
-      id: "HIGH",
-      position: { x: 0, z: 0 },
-      width: 30,
-      depth: 30,
-      height: 36,
-    };
-    const obj: Carcass = {
-      ...defaultBookcase(),
-      id: "OBJ",
-      position: { x: 0, z: 0 },
-      width: 10,
-      depth: 10,
-    };
-    expect(snapHeight(obj, projectWith([low, high, obj]))).toBeCloseTo(36, 6);
+    expect(snapHeight(cab, projectWith([cab]))).toBe(0);
   });
 });

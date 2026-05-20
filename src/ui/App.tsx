@@ -15,6 +15,7 @@ import {
   normalizeProject,
   rectWalls,
   uid,
+  RUNNER_PROFILES,
 } from "../domain/defaults";
 import { evenlySpacedShelves } from "../domain/shelves";
 import { buildProject } from "../geometry";
@@ -74,23 +75,21 @@ function PlacementFields({
 }) {
   return (
     <>
-      <div className="row" style={{ gap: 6 }}>
-        <StepField
-          label="Pos X"
-          value={obj.position.x}
-          onChange={(v) => onPatch({ position: { ...obj.position, x: v } })}
-        />
-        <StepField
-          label="Pos Y"
-          value={obj.baseHeight ?? 0}
-          onChange={(v) => onPatch({ baseHeight: v })}
-        />
-        <StepField
-          label="Pos Z"
-          value={obj.position.z}
-          onChange={(v) => onPatch({ position: { ...obj.position, z: v } })}
-        />
-      </div>
+      <StepField
+        label="Pos X"
+        value={obj.position.x}
+        onChange={(v) => onPatch({ position: { ...obj.position, x: v } })}
+      />
+      <StepField
+        label="Pos Y"
+        value={obj.baseHeight ?? 0}
+        onChange={(v) => onPatch({ baseHeight: v })}
+      />
+      <StepField
+        label="Pos Z"
+        value={obj.position.z}
+        onChange={(v) => onPatch({ position: { ...obj.position, z: v } })}
+      />
       <NumField
         label="Rotation°"
         value={obj.rotationDeg}
@@ -683,6 +682,30 @@ function Workspace({
                   patchRunner(r.id, { label: e.target.value })
                 }
               />
+              <label className="field">
+                <span>Profile</span>
+                <select
+                  value=""
+                  onChange={(e) => {
+                    const p = RUNNER_PROFILES.find(
+                      (x) => x.id === e.target.value,
+                    );
+                    if (!p) return;
+                    patchRunner(r.id, {
+                      boardMaterialId: p.materialId,
+                      ...(p.depth !== undefined ? { depth: p.depth } : {}),
+                    });
+                    e.currentTarget.value = "";
+                  }}
+                >
+                  <option value="">Pick a profile…</option>
+                  {RUNNER_PROFILES.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <SelectField
                 label="Board"
                 value={r.boardMaterialId}
@@ -1059,6 +1082,117 @@ function Workspace({
 
             {tab === "Materials" && (
               <div className="report">
+                <h3>Stock (edit width & length to match what you have)</h3>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Kind</th>
+                      <th>Item</th>
+                      <th>Width (in)</th>
+                      <th>Length (in)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {project.catalog.boards.map((b, i) => (
+                      <tr key={`board-${b.materialId}-${i}`}>
+                        <td>Board</td>
+                        <td>{b.nominal}</td>
+                        <td>
+                          <input
+                            type="number"
+                            step={0.0625}
+                            value={b.width}
+                            onChange={(e) =>
+                              setProject((p) => ({
+                                ...p,
+                                catalog: {
+                                  ...p.catalog,
+                                  boards: p.catalog.boards.map((x, k) =>
+                                    k === i
+                                      ? { ...x, width: Number(e.target.value) }
+                                      : x,
+                                  ),
+                                },
+                              }))
+                            }
+                          />
+                        </td>
+                        <td>
+                          <input
+                            type="number"
+                            step={0.25}
+                            value={b.length}
+                            onChange={(e) =>
+                              setProject((p) => ({
+                                ...p,
+                                catalog: {
+                                  ...p.catalog,
+                                  boards: p.catalog.boards.map((x, k) =>
+                                    k === i
+                                      ? { ...x, length: Number(e.target.value) }
+                                      : x,
+                                  ),
+                                },
+                              }))
+                            }
+                          />
+                        </td>
+                      </tr>
+                    ))}
+                    {project.catalog.sheets.map((s, i) => {
+                      const mat = project.catalog.materials.find(
+                        (m) => m.id === s.materialId,
+                      );
+                      return (
+                        <tr key={`sheet-${s.materialId}-${i}`}>
+                          <td>Sheet</td>
+                          <td>{mat?.name ?? s.materialId}</td>
+                          <td>
+                            <input
+                              type="number"
+                              step={0.25}
+                              value={s.width}
+                              onChange={(e) =>
+                                setProject((p) => ({
+                                  ...p,
+                                  catalog: {
+                                    ...p.catalog,
+                                    sheets: p.catalog.sheets.map((x, k) =>
+                                      k === i
+                                        ? { ...x, width: Number(e.target.value) }
+                                        : x,
+                                    ),
+                                  },
+                                }))
+                              }
+                            />
+                          </td>
+                          <td>
+                            <input
+                              type="number"
+                              step={0.25}
+                              value={s.length}
+                              onChange={(e) =>
+                                setProject((p) => ({
+                                  ...p,
+                                  catalog: {
+                                    ...p.catalog,
+                                    sheets: p.catalog.sheets.map((x, k) =>
+                                      k === i
+                                        ? { ...x, length: Number(e.target.value) }
+                                        : x,
+                                    ),
+                                  },
+                                }))
+                              }
+                            />
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                <h3 style={{ marginTop: 16 }}>Bill of materials</h3>
                 <table>
                   <thead>
                     <tr>

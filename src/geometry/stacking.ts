@@ -1,4 +1,4 @@
-import type { Carcass, Project, RefBox, Runner } from "../domain/types";
+import type { Project } from "../domain/types";
 import { materialThickness } from "./types";
 import { rectAABB, type AABB } from "./group";
 
@@ -63,29 +63,94 @@ function overlaps(a: AABB, b: AABB): boolean {
   );
 }
 
-/** The Y a target should sit at to rest on whatever it overlaps: the highest
- *  top surface among all other objects whose footprint overlaps the target.
- *  0 (floor) when nothing is under it. */
+/** A horizontal surface candidate the target could rest on. */
+interface Surface {
+  top: number;
+  foot: AABB;
+}
+
+function gatherSurfaces(target: Placed, project: Project): Surface[] {
+  const out: Surface[] = [];
+  for (const c of project.carcasses) {
+    if (c.id === target.id) continue;
+    const foot = rectAABB(
+      c.position.x,
+      c.position.z,
+      c.width,
+      c.depth,
+      c.rotationDeg,
+    );
+    out.push({ top: (c.baseHeight ?? 0) + c.height, foot });
+    const carcassT = materialThickness(
+      project.catalog.materials,
+      c.carcassMaterialId,
+    );
+    const shelfT = materialThickness(
+      project.catalog.materials,
+      c.shelfMaterialId,
+    );
+    const interior = c.toeKickHeight + carcassT;
+    for (const sh of c.shelves) {
+      out.push({
+        top: (c.baseHeight ?? 0) + interior + sh.offsetFromBottom + shelfT,
+        foot,
+      });
+    }
+  }
+  for (const r of project.runners) {
+    if (r.id === target.id) continue;
+    out.push({
+      top:
+        (r.baseHeight ?? 0) +
+        materialThickness(project.catalog.materials, r.boardMaterialId),
+      foot: rectAABB(
+        r.position.x,
+        r.position.z,
+        r.length,
+        r.depth,
+        r.rotationDeg,
+      ),
+    });
+  }
+  for (const b of project.refBoxes) {
+    if (b.id === target.id) continue;
+    out.push({
+      top: (b.baseHeight ?? 0) + b.height,
+      foot: rectAABB(
+        b.position.x,
+        b.position.z,
+        b.width,
+        b.depth,
+        b.rotationDeg,
+      ),
+    });
+  }
+  return out;
+}
+
+/** The Y a target should drop to: the highest horizontal surface (cabinet/
+ *  runner/tote top OR a carcass shelf) that overlaps the target's footprint
+ *  AND sits at or below its current Pos Y. Floor (0) when nothing qualifies. */
 export function snapHeight(target: Placed, project: Project): number {
   const f = footprint(target, project);
   if (!f) return 0;
   const box = rectAABB(f.cx, f.cz, f.w, f.d, f.deg);
+  const currentY =
+    (target as { baseHeight?: number }).baseHeight ??
+    // fall back to a fresh lookup so callers can pass a stale ref
+    (project.carcasses.find((c) => c.id === target.id)?.baseHeight ??
+      project.runners.find((r) => r.id === target.id)?.baseHeight ??
+      project.refBoxes.find((b) => b.id === target.id)?.baseHeight ??
+      0);
+  const eps = 1e-6;
 
-  const others: Array<Carcass | Runner | RefBox> = [
-    ...project.carcasses,
-    ...project.runners,
-    ...project.refBoxes,
-  ];
   let best = 0;
   let found = false;
-  for (const o of others) {
-    if (o.id === target.id) continue;
-    const of = footprint(o, project);
-    if (!of) continue;
-    if (!overlaps(box, rectAABB(of.cx, of.cz, of.w, of.d, of.deg))) continue;
-    const t = objectTop(o, project);
-    if (!found || t > best) {
-      best = t;
+  for (const s of gatherSurfaces(target, project)) {
+    if (s.top > currentY + eps) continue;
+    if (!overlaps(box, s.foot)) continue;
+    if (!found || s.top > best) {
+      best = s.top;
       found = true;
     }
   }
