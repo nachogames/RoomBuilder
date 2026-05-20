@@ -3,3 +3,6 @@ dist/
 .superpowers/
 *.local
 .DS_Store
+
+# TS incremental build cache
+tsconfig.tsbuildinfo
