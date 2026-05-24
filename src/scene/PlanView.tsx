@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import type { Project, Pt } from "../domain/types";
 import { translateGroup } from "../geometry/group";
+import { resolveMove } from "./dragMath";
 import {
   baseboardLengthInches,
   centroid,
@@ -162,13 +163,7 @@ export function PlanView({
       const ok = (px: number, pz: number) =>
         rectInsideRoom(walls, px, pz, c.width, c.depth, c.rotationDeg);
       const p0 = c.position;
-      const pos = ok(tx, tz)
-        ? { x: tx, z: tz }
-        : ok(tx, p0.z)
-          ? { x: tx, z: p0.z }
-          : ok(p0.x, tz)
-            ? { x: p0.x, z: tz }
-            : p0;
+      const pos = resolveMove(ok, tx, tz, p0, false);
       if (pos === p0) return;
       setProject((pr) => ({
         ...pr,
@@ -187,22 +182,28 @@ export function PlanView({
       const ok = (px: number, pz: number) =>
         rectInsideRoom(walls, px, pz, r.length, r.depth, r.rotationDeg);
       const p0 = r.position;
-      const pos = ok(tx, tz)
-        ? { x: tx, z: tz }
-        : ok(tx, p0.z)
-          ? { x: tx, z: p0.z }
-          : ok(p0.x, tz)
-            ? { x: p0.x, z: tz }
-            : p0;
-      if (pos === p0) return;
-      const t = translateGroup(r, project, pos.x - p0.x, pos.z - p0.z);
-      setProject((pr) => ({
-        ...pr,
-        runners: pr.runners.map((k) => (k.id === r.id ? t.runner : k)),
-        carcasses: pr.carcasses.map((k) =>
-          t.carcassPos[k.id] ? { ...k, position: t.carcassPos[k.id] } : k,
-        ),
-      }));
+      // Wall-slide when a respecting position exists, but NEVER freeze: a long
+      // shelf that can't fit any in-room position still follows the cursor.
+      const pos = resolveMove(ok, tx, tz, p0, true);
+      if (r.groupDrag) {
+        // desk top: carry the spanned cabinets along
+        const t = translateGroup(r, project, pos.x - p0.x, pos.z - p0.z);
+        setProject((pr) => ({
+          ...pr,
+          runners: pr.runners.map((k) => (k.id === r.id ? t.runner : k)),
+          carcasses: pr.carcasses.map((k) =>
+            t.carcassPos[k.id] ? { ...k, position: t.carcassPos[k.id] } : k,
+          ),
+        }));
+      } else {
+        // a shelf: move the runner alone, leave the carcasses put
+        setProject((pr) => ({
+          ...pr,
+          runners: pr.runners.map((k) =>
+            k.id === r.id ? { ...k, position: pos } : k,
+          ),
+        }));
+      }
     } else {
       const bx = project.refBoxes.find((k) => k.id === drag.id);
       if (!bx) return;
@@ -211,13 +212,7 @@ export function PlanView({
       const ok = (px: number, pz: number) =>
         rectInsideRoom(walls, px, pz, bx.width, bx.depth, bx.rotationDeg);
       const p0 = bx.position;
-      const pos = ok(tx, tz)
-        ? { x: tx, z: tz }
-        : ok(tx, p0.z)
-          ? { x: tx, z: p0.z }
-          : ok(p0.x, tz)
-            ? { x: p0.x, z: tz }
-            : p0;
+      const pos = resolveMove(ok, tx, tz, p0, false);
       if (pos === p0) return;
       setProject((pr) => ({
         ...pr,

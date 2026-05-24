@@ -133,8 +133,11 @@ export interface Runner {
   id: string;
   label: string;
   boardMaterialId: string;
-  /** owned cabinets: the desk group + sag/support bearing (NOT sizing) */
+  /** cabinets this bears on, for sag/support (NOT sizing or movement) */
   spannedCarcassIds: string[];
+  /** when true (desk top), dragging the runner also moves its spanned
+   *  carcasses; when false (a shelf), the runner free-moves on its own */
+  groupDrag?: boolean;
   /** X extent of the board */
   length: Inches;
   /** depth (front-to-back) of the runner board */

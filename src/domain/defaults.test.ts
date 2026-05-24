@@ -105,6 +105,20 @@ describe("normalizeProject carcass stacking defaults", () => {
     expect(n.refBoxes[0].baseHeight).toBe(0);
   });
 
+  it("defaults groupDrag: false for plain runners, true for desk tops", () => {
+    expect(defaultRunner([]).groupDrag).toBe(false);
+    // a legacy runner labelled 'Desk top' migrates to groupDrag true
+    const p = defaultProject();
+    p.runners = [
+      { id: "R", label: "Desk top", boardMaterialId: "ply-0.75", spannedCarcassIds: [], depth: 24, length: 70, position: { x: 0, z: 0 }, rotationDeg: 0, baseHeight: 28.5, fastening: "screw-through", supports: [] } as never,
+    ];
+    expect(normalizeProject(p).runners[0].groupDrag).toBe(true);
+    p.runners = [
+      { id: "S", label: "Runner shelf", boardMaterialId: "pine-2x12", spannedCarcassIds: [], depth: 11, length: 60, position: { x: 0, z: 0 }, rotationDeg: 0, baseHeight: 30, fastening: "pocket-screw", supports: [] } as never,
+    ];
+    expect(normalizeProject(p).runners[0].groupDrag).toBe(false);
+  });
+
   it("every runner profile maps to a material in defaultCatalog", () => {
     const ids = new Set(defaultCatalog().materials.map((m) => m.id));
     for (const p of RUNNER_PROFILES) expect(ids.has(p.materialId)).toBe(true);

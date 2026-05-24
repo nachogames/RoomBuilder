@@ -99,6 +99,7 @@ export function defaultRunner(spanned: string[]): Runner {
     label: "Runner shelf",
     boardMaterialId: PINE_2x12,
     spannedCarcassIds: spanned,
+    groupDrag: false,
     length: 60,
     depth: 11.25,
     position: { x: 0, z: 0 },
@@ -169,6 +170,7 @@ export function deskAssembly(): { carcasses: Carcass[]; runner: Runner } {
     ...defaultRunner([left.id, right.id]),
     label: "Desk top",
     boardMaterialId: PLY_34,
+    groupDrag: true,
     length: 70,
     depth: 24,
     position: { x: 0, z: 0 },
@@ -218,6 +220,7 @@ export function myRoom(): Project {
     ...defaultRunner([left.id, right.id]),
     label: "Desk top",
     boardMaterialId: PLY_15,
+    groupDrag: true,
     length: deskLen,
     depth: deskDepth,
     position: { x: deskLen / 2, z: deskDepth / 2 },
@@ -293,11 +296,16 @@ export function migrateRunner(
   r: Record<string, unknown>,
   carcasses: Carcass[],
 ): Runner {
+  // legacy desktops had no flag; assume "Desk top" carries its cabinets
+  const groupDrag =
+    (r.groupDrag as boolean | undefined) ??
+    /desk\s*top/i.test(String(r.label ?? ""));
   const hasNew =
     r.position !== undefined && typeof r.length === "number";
   if (hasNew) {
     return {
       ...(r as unknown as Runner),
+      groupDrag,
       rotationDeg: (r.rotationDeg as number) ?? 0,
       baseHeight: (r.baseHeight as number) ?? 0,
     };
@@ -322,6 +330,7 @@ export function migrateRunner(
     label: r.label as string,
     boardMaterialId: r.boardMaterialId as string,
     spannedCarcassIds: spannedIds,
+    groupDrag,
     length: worldRight - worldLeft,
     depth: (r.depth as number) ?? 11.25,
     position: { x: (worldLeft + worldRight) / 2, z },

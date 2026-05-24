@@ -792,6 +792,19 @@ function Workspace({
                   }))
                 }
               />
+              <label
+                className="field"
+                title="On (desk top): dragging this also moves its cabinets. Off (shelf): it moves on its own."
+              >
+                <span>Drag moves cabinets</span>
+                <input
+                  type="checkbox"
+                  checked={r.groupDrag ?? false}
+                  onChange={(e) =>
+                    patchRunner(r.id, { groupDrag: e.target.checked })
+                  }
+                />
+              </label>
               <div className="label" style={{ margin: "6px 0 2px" }}>
                 Sits on:
               </div>
