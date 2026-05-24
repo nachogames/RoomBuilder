@@ -48,8 +48,8 @@ export function findContainer(item: DragItem, project: Project): Carcass | null 
     if (c.id === item.id) continue;
     if (item.excludeIds?.includes(c.id)) continue;
     const { innerW } = interiorOf(c, project);
-    // width must fit between the side walls; depth may exceed the cavity since
-    // the front is open (the item just sticks out the front).
+    // width must fit between the side walls; depth may exceed the cavity (the
+    // item just sticks out the open front).
     if (item.w > innerW + 1e-6) continue;
     const [lx, lz] = toLocal(c, item.cx, item.cz);
     if (Math.abs(lx) <= c.width / 2 && Math.abs(lz) <= c.depth / 2) return c;
@@ -67,7 +67,7 @@ export function clampToInterior(
   tz: number,
   project: Project,
 ): { x: number; z: number } {
-  const { innerW, backInner } = interiorOf(c, project);
+  const { innerW, interiorD, backInner } = interiorOf(c, project);
   const rad = (c.rotationDeg * Math.PI) / 180;
   const cos = Math.cos(rad);
   const sin = Math.sin(rad);
@@ -79,9 +79,12 @@ export function clampToInterior(
   // sides
   const halfX = Math.max(0, innerW / 2 - itemW / 2);
   lx = Math.max(-halfX, Math.min(halfX, lx));
-  // back wall; front open
-  const minLz = backInner + itemD / 2;
-  if (lz < minLz) lz = minLz;
+  // back wall, only if the item fits the depth (otherwise it's deeper than the
+  // cavity and just slides freely through the open front — no forward snap)
+  if (itemD <= interiorD + 1e-6) {
+    const minLz = backInner + itemD / 2;
+    if (lz < minLz) lz = minLz;
+  }
   // local → world
   return {
     x: c.position.x + lx * cos - lz * sin,

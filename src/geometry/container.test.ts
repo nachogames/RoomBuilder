@@ -26,16 +26,16 @@ describe("findContainer", () => {
     expect(c?.id).toBe("BK");
   });
 
-  it("does not capture an item too WIDE for the cavity", () => {
+  it("does not capture an item too wide for the cavity", () => {
     const p = proj([book()]);
     expect(findContainer({ id: "T", w: 30, d: 8, cx: 0, cz: 0 }, p)).toBeNull();
   });
 
-  it("captures a deep-but-narrow item (front is open, it sticks out)", () => {
+  it("captures a deep-but-narrow item (front open; it sticks out)", () => {
     const p = proj([book()]);
-    expect(
-      findContainer({ id: "T", w: 16, d: 30, cx: 0, cz: 0 }, p)?.id,
-    ).toBe("BK");
+    expect(findContainer({ id: "T", w: 16, d: 30, cx: 0, cz: 0 }, p)?.id).toBe(
+      "BK",
+    );
   });
 
   it("does not capture when the centre isn't over the bookcase", () => {
@@ -77,5 +77,12 @@ describe("clampToInterior (sides + back, front open)", () => {
   it("leaves the front open (no clamp toward +z)", () => {
     const r = clampToInterior(c, 16, 8, 0, 100, p);
     expect(r.z).toBeCloseTo(100, 6);
+  });
+
+  it("does not back-clamp an item deeper than the cavity (no forward snap)", () => {
+    // itemD 30 > cavity 11 → z follows the target freely, sides still clamp
+    expect(clampToInterior(c, 16, 30, 0, -100, p).z).toBeCloseTo(-100, 6);
+    expect(clampToInterior(c, 16, 30, 0, 2, p).z).toBeCloseTo(2, 6);
+    expect(clampToInterior(c, 100, 30, 100, 0, p).x).toBeCloseTo(0, 6);
   });
 });
