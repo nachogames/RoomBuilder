@@ -34,6 +34,24 @@ describe("roomReferenceSlabs wall placement", () => {
     expect(top.height).toBe(96);
   });
 
+  it("renders the baseboard as a mitered band inside the wall, full height", () => {
+    const room = {
+      length: 100,
+      width: 80,
+      ceilingHeight: 96,
+      wallThickness: 4.5,
+      walls: rectWalls(100, 80), // top edge z = -40
+      baseboard: { height: 5.5, thickness: 0.5 },
+    };
+    const bb = roomReferenceSlabs(room).find((s) => s.id === "bb0")!;
+    expect(bb.height).toBe(5.5);
+    const fp = bb.footprint!;
+    // outer face on the polygon line (z = -40), inner face 0.5" into the room
+    expect(fp[0].z).toBeCloseTo(-40, 6);
+    expect(fp[1].z).toBeCloseTo(-40, 6);
+    expect(Math.max(...fp.map((p) => p.z))).toBeCloseTo(-40 + 0.5, 6);
+  });
+
   it("keeps every wall slab OUTSIDE the room, even around a notch", () => {
     // square 100x100 with a notch carved out of the right wall (x80-100, z20-40)
     const room = {

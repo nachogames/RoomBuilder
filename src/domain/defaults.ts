@@ -252,7 +252,7 @@ export function myRoom(): Project {
         { x: 126, z: 106 },
         { x: 0, z: 106 },
       ],
-      baseboard: { height: 3.5, thickness: 0.5 },
+      baseboard: { height: 5.5, thickness: 0.5 },
     },
     carcasses: [left, right],
     runners: [desktop],

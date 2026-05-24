@@ -43,11 +43,10 @@ function lineIntersect(A1: Pt, r: Pt, A2: Pt, s2: Pt): Pt | null {
   return { x: A1.x + t1 * r.x, z: A1.z + t1 * r.z };
 }
 
-/** The interior wall polygon offset OUTWARD by `t`, with mitered corners.
- *  Returns one outer vertex per input vertex (aligned by index). */
-export function outerWallVertices(walls: Pt[], t: number): Pt[] {
+/** Offset each polygon vertex by `dist` along per-edge `normals`, mitering at
+ *  corners (intersection of the two offset edges). One vertex out per vertex. */
+function offsetVertices(walls: Pt[], dist: number, normals: Pt[]): Pt[] {
   const n = walls.length;
-  const o = edgeOutwardNormals(walls);
   const out: Pt[] = [];
   for (let i = 0; i < n; i++) {
     const eIn = (i - 1 + n) % n; // edge ending at vertex i
@@ -56,11 +55,22 @@ export function outerWallVertices(walls: Pt[], t: number): Pt[] {
     const next = walls[(i + 1) % n];
     const dIn = { x: P.x - prev.x, z: P.z - prev.z };
     const dOut = { x: next.x - P.x, z: next.z - P.z };
-    const A1 = { x: P.x + o[eIn].x * t, z: P.z + o[eIn].z * t };
-    const A2 = { x: P.x + o[i].x * t, z: P.z + o[i].z * t };
+    const A1 = { x: P.x + normals[eIn].x * dist, z: P.z + normals[eIn].z * dist };
+    const A2 = { x: P.x + normals[i].x * dist, z: P.z + normals[i].z * dist };
     out.push(lineIntersect(A1, dIn, A2, dOut) ?? A2);
   }
   return out;
+}
+
+/** The interior wall polygon offset OUTWARD by `t`, with mitered corners. */
+export function outerWallVertices(walls: Pt[], t: number): Pt[] {
+  return offsetVertices(walls, t, edgeOutwardNormals(walls));
+}
+
+/** The interior polygon offset INWARD by `d` (for the baseboard band). */
+export function innerOffsetVertices(walls: Pt[], d: number): Pt[] {
+  const inward = edgeOutwardNormals(walls).map((o) => ({ x: -o.x, z: -o.z }));
+  return offsetVertices(walls, d, inward);
 }
 
 /** Closed-polygon edges as [from, to] pairs. */
@@ -270,40 +280,45 @@ export function roomReferenceSlabs(room: Room): RefSlab[] {
   const outward = edgeOutwardNormals(walls);
   // outer wall boundary: interior polygon mitered outward by the wall thickness
   const outer = outerWallVertices(walls, t);
+  // baseboard band: interior polygon mitered inward by its thickness
+  const bbInner = room.baseboard
+    ? innerOffsetVertices(walls, room.baseboard.thickness)
+    : null;
+
+  const quadCenter = (q: Pt[], y: number) => ({
+    x: (q[0].x + q[1].x + q[2].x + q[3].x) / 4,
+    y,
+    z: (q[0].z + q[1].z + q[2].z + q[3].z) / 4,
+  });
 
   walls.forEach((a, i) => {
     const b = walls[(i + 1) % n];
     const len = dist(a, b);
     if (len < 1e-6) return;
+    const j = (i + 1) % n;
 
     // Wall = quad between the interior edge (a→b) and the mitered outer edge.
     // No length padding, so corners meet cleanly with no overhang/overlap.
-    const fp: Pt[] = [a, b, outer[(i + 1) % n], outer[i]];
-    const cx = (fp[0].x + fp[1].x + fp[2].x + fp[3].x) / 4;
-    const cz = (fp[0].z + fp[1].z + fp[2].z + fp[3].z) / 4;
+    const fp: Pt[] = [a, b, outer[j], outer[i]];
     out.push({
       id: `w${i}`,
       kind: "wall",
-      center: { x: cx, y: H / 2, z: cz },
+      center: quadCenter(fp, H / 2),
       footprint: fp,
       height: H,
       normal: outward[i],
     });
 
-    if (room.baseboard) {
-      const { height: bh, thickness: bt } = room.baseboard;
-      const mx = (a.x + b.x) / 2;
-      const mz = (a.z + b.z) / 2;
-      const ang = Math.atan2(b.z - a.z, b.x - a.x);
-      const nx = -outward[i].x; // inward
-      const nz = -outward[i].z;
-      const off = bt / 2; // hug the interior face
+    if (room.baseboard && bbInner) {
+      const { height: bh } = room.baseboard;
+      // baseboard = quad between the interior edge and the inward-mitered edge
+      const bfp: Pt[] = [a, b, bbInner[j], bbInner[i]];
       out.push({
         id: `bb${i}`,
         kind: "baseboard",
-        center: { x: mx + nx * off, y: bh / 2, z: mz + nz * off },
-        size: { x: len, y: bh, z: bt },
-        rotY: -ang,
+        center: quadCenter(bfp, bh / 2),
+        footprint: bfp,
+        height: bh,
         normal: outward[i],
       });
     }

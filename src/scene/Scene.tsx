@@ -166,14 +166,14 @@ function SlabMesh({ s, dollhouse }: { s: RefSlab; dollhouse: boolean }) {
       );
   });
 
-  // prism (wall): geometry is in absolute world coords, mesh at origin
+  // prism (wall + baseboard): geometry is in absolute world coords
   if (geom) {
     return (
       <mesh ref={ref} geometry={geom} renderOrder={-1}>
         <meshStandardMaterial
-          color={SLAB_COLOR.wall}
+          color={SLAB_COLOR[s.kind]}
           transparent
-          opacity={0.16}
+          opacity={s.kind === "baseboard" ? 0.85 : 0.16}
           side={THREE.DoubleSide}
         />
       </mesh>
