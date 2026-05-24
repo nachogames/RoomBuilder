@@ -348,41 +348,81 @@ export function PlanView({
 
         {/* runners / desktops (draggable; drags the desk group) */}
         {project.runners.map((r) => (
-          <g
-            key={r.id}
-            transform={`rotate(${r.rotationDeg} ${r.position.x} ${r.position.z})`}
-            style={{ cursor: "grab" }}
-            onPointerDown={(e) => {
-              (e.target as Element).setPointerCapture?.(e.pointerId);
-              onSelect(r.id);
-              const rp = toRoom(e);
-              setDrag({
-                kind: "runner",
-                id: r.id,
-                dx: rp ? r.position.x - rp.x : 0,
-                dz: rp ? r.position.z - rp.z : 0,
-              });
-            }}
-          >
-            <rect
-              x={r.position.x - r.length / 2}
-              y={r.position.z - r.depth / 2}
-              width={r.length}
-              height={r.depth}
-              fill="#caa46a55"
-              stroke="#caa46a"
-              strokeWidth={S}
-            />
+          <g key={r.id}>
+            <g
+              transform={`rotate(${r.rotationDeg} ${r.position.x} ${r.position.z})`}
+              style={{ cursor: "grab" }}
+              onPointerDown={(e) => {
+                (e.target as Element).setPointerCapture?.(e.pointerId);
+                onSelect(r.id);
+                const rp = toRoom(e);
+                setDrag({
+                  kind: "runner",
+                  id: r.id,
+                  dx: rp ? r.position.x - rp.x : 0,
+                  dz: rp ? r.position.z - rp.z : 0,
+                });
+              }}
+            >
+              <rect
+                x={r.position.x - r.length / 2}
+                y={r.position.z - r.depth / 2}
+                width={r.length}
+                height={r.depth}
+                fill="#caa46a55"
+                stroke="#caa46a"
+                strokeWidth={S}
+              />
+            </g>
             {showDims && (
-              <text
-                className="dim ro"
-                x={r.position.x}
-                y={r.position.z - r.depth / 2 - fontPx * 0.4}
-                fontSize={fontPx}
-                textAnchor="middle"
-              >
-                {r.label}: {fmt(r.length)}
-              </text>
+              <>
+                <text
+                  className="dim edit"
+                  x={r.position.x}
+                  y={r.position.z - r.depth / 2 - fontPx * 0.4}
+                  fontSize={fontPx}
+                  textAnchor="middle"
+                  onClick={() =>
+                    openEdit(
+                      r.position.x,
+                      r.position.z - r.depth / 2,
+                      r.length,
+                      (n) =>
+                        setProject((pr) => ({
+                          ...pr,
+                          runners: pr.runners.map((x) =>
+                            x.id === r.id ? { ...x, length: n } : x,
+                          ),
+                        })),
+                    )
+                  }
+                >
+                  L {fmt(r.length)}
+                </text>
+                <text
+                  className="dim edit"
+                  x={r.position.x + r.length / 2 + fontPx * 0.4}
+                  y={r.position.z}
+                  fontSize={fontPx}
+                  dominantBaseline="middle"
+                  onClick={() =>
+                    openEdit(
+                      r.position.x + r.length / 2,
+                      r.position.z,
+                      r.depth,
+                      (n) =>
+                        setProject((pr) => ({
+                          ...pr,
+                          runners: pr.runners.map((x) =>
+                            x.id === r.id ? { ...x, depth: n } : x,
+                          ),
+                        })),
+                    )
+                  }
+                >
+                  D {fmt(r.depth)}
+                </text>
+              </>
             )}
           </g>
         ))}
