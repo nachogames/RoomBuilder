@@ -212,7 +212,6 @@ export function pointInRoom(walls: Pt[], px: number, pz: number): boolean {
  *  baseboard band per edge, offset inward toward the room centroid. */
 export function roomReferenceSlabs(room: Room): RefSlab[] {
   const { ceilingHeight: H, wallThickness: t } = room;
-  const c = centroid(room.walls);
   const out: RefSlab[] = [];
 
   wallEdges(room.walls).forEach(([a, b], i) => {
@@ -222,10 +221,11 @@ export function roomReferenceSlabs(room: Room): RefSlab[] {
     const mz = (a.z + b.z) / 2;
     const ang = Math.atan2(b.z - a.z, b.x - a.x);
 
-    // inward unit normal (toward centroid)
+    // inward unit normal: pick the side that is actually inside the polygon.
+    // (Centroid won't do for non-convex shapes like a notch.)
     let nx = -(b.z - a.z) / len;
     let nz = (b.x - a.x) / len;
-    if ((c.x - mx) * nx + (c.z - mz) * nz < 0) {
+    if (!pointInRoom(room.walls, mx + nx * 0.1, mz + nz * 0.1)) {
       nx = -nx;
       nz = -nz;
     }

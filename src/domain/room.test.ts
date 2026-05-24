@@ -29,6 +29,32 @@ describe("roomReferenceSlabs wall placement", () => {
     // inner face (toward interior) lands exactly on the line
     expect(top.center.z + top.size.z / 2).toBeCloseTo(-40, 6);
   });
+
+  it("keeps every wall slab OUTSIDE the room, even around a notch", () => {
+    // square 100x100 with a notch carved out of the right wall (x80-100, z20-40)
+    const room = {
+      length: 100,
+      width: 100,
+      ceilingHeight: 96,
+      wallThickness: 4.5,
+      walls: [
+        { x: 0, z: 0 },
+        { x: 100, z: 0 },
+        { x: 100, z: 20 },
+        { x: 80, z: 20 },
+        { x: 80, z: 40 },
+        { x: 100, z: 40 },
+        { x: 100, z: 100 },
+        { x: 0, z: 100 },
+      ],
+      baseboard: null,
+    };
+    const walls = roomReferenceSlabs(room).filter((s) => s.kind === "wall");
+    for (const w of walls) {
+      // a wall slab's centre sits half a thickness OUTSIDE the polygon
+      expect(pointInRoom(room.walls, w.center.x, w.center.z)).toBe(false);
+    }
+  });
 });
 
 describe("polygon perimeter / baseboard length", () => {
