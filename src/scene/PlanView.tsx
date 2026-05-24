@@ -209,8 +209,11 @@ export function PlanView({
       if (!bx) return;
       const tx = x + drag.dx;
       const tz = z + drag.dz;
+      // constrain by the larger (top) footprint — its outermost edge
+      const bw = Math.max(bx.width, bx.topWidth ?? bx.width);
+      const bd = Math.max(bx.depth, bx.topDepth ?? bx.depth);
       const ok = (px: number, pz: number) =>
-        rectInsideRoom(walls, px, pz, bx.width, bx.depth, bx.rotationDeg);
+        rectInsideRoom(walls, px, pz, bw, bd, bx.rotationDeg);
       const p0 = bx.position;
       const pos = resolveMove(ok, tx, tz, p0, false);
       if (pos === p0) return;
@@ -536,15 +539,42 @@ export function PlanView({
               });
             }}
           >
-            <rect
-              x={b.position.x - b.width / 2}
-              y={b.position.z - b.depth / 2}
-              width={b.width}
-              height={b.depth}
-              fill="#5fa8d355"
-              stroke="#5fa8d3"
-              strokeWidth={S}
-            />
+            {(() => {
+              const topW = b.topWidth ?? b.width;
+              const topD = b.topDepth ?? b.depth;
+              // outer footprint = the larger (top) outline; bottom nests inside
+              const outW = Math.max(b.width, topW);
+              const outD = Math.max(b.depth, topD);
+              const inW = Math.min(b.width, topW);
+              const inD = Math.min(b.depth, topD);
+              const tapered = inW !== outW || inD !== outD;
+              return (
+                <>
+                  <rect
+                    x={b.position.x - outW / 2}
+                    y={b.position.z - outD / 2}
+                    width={outW}
+                    height={outD}
+                    fill="#5fa8d355"
+                    stroke="#5fa8d3"
+                    strokeWidth={S}
+                  />
+                  {tapered && (
+                    <rect
+                      x={b.position.x - inW / 2}
+                      y={b.position.z - inD / 2}
+                      width={inW}
+                      height={inD}
+                      fill="none"
+                      stroke="#5fa8d3"
+                      strokeWidth={S}
+                      strokeDasharray={`${S * 3} ${S * 2}`}
+                      pointerEvents="none"
+                    />
+                  )}
+                </>
+              );
+            })()}
             <text
               x={b.position.x}
               y={b.position.z}
