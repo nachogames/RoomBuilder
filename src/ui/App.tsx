@@ -28,6 +28,9 @@ import { checkCarcass, worstLevel } from "../domain/checks";
 import { checkRunnerSag } from "../domain/sag";
 import { Scene } from "../scene/Scene";
 import { PlanView } from "../scene/PlanView";
+import { roomInteriorPoint } from "../domain/room";
+import { fitRunnerToCarcasses } from "../geometry/group";
+import { loadViewState, saveViewState } from "./viewState";
 import { DimField, NumField, SelectField, StepField } from "./fields";
 import { UnitsProvider, useUnits } from "./units";
 import { useProjectHistory } from "./useProjectHistory";
@@ -140,10 +143,11 @@ function Workspace({
   canRedo: boolean;
 }) {
   const { fmt } = useUnits();
-  const [sel, setSel] = useState<string>("room");
+  const view0 = useMemo(() => loadViewState(), []);
+  const [sel, setSel] = useState<string>(view0.sel ?? "room");
   const setSelId = setSel; // tree selection drives the inspector
   const [collapse, setCollapse] = useState<Record<string, boolean>>({});
-  const [tab, setTab] = useState<Tab>("3D");
+  const [tab, setTab] = useState<Tab>((view0.tab as Tab) ?? "3D");
   const [showDims, setShowDims] = useState(true);
   const [dollhouse, setDollhouse] = useState(true);
   const [savedNames, setSavedNames] = useState<string[]>([]);
@@ -188,6 +192,10 @@ function Workspace({
   useEffect(() => {
     listProjects().then(setSavedNames).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    saveViewState({ tab, sel });
+  }, [tab, sel]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -252,7 +260,7 @@ function Workspace({
     const c = {
       ...defaultBookcase(),
       id: uid("carcass"),
-      position: { x: 0, z: 0 },
+      position: roomInteriorPoint(project.room.walls),
     };
     setProject((p) => ({ ...p, carcasses: [...p.carcasses, c] }));
     setSelId(c.id);
@@ -260,21 +268,34 @@ function Workspace({
 
   function addRunner() {
     if (project.carcasses.length === 0) return;
-    const r = defaultRunner(project.carcasses.map((c) => c.id));
+    const base = defaultRunner(project.carcasses.map((c) => c.id));
+    const r = { ...base, ...fitRunnerToCarcasses(base, project) };
     setProject((p) => ({ ...p, runners: [...p.runners, r] }));
+    setSelId(r.id);
   }
 
   function addDesk() {
     const { carcasses, runner } = deskAssembly();
+    const at = roomInteriorPoint(project.room.walls);
+    const cs = carcasses.map((c) => ({
+      ...c,
+      position: { x: c.position.x + at.x, z: c.position.z + at.z },
+    }));
+    const rn = {
+      ...runner,
+      position: { x: runner.position.x + at.x, z: runner.position.z + at.z },
+    };
     setProject((p) => ({
       ...p,
-      carcasses: [...p.carcasses, ...carcasses],
-      runners: [...p.runners, runner],
+      carcasses: [...p.carcasses, ...cs],
+      runners: [...p.runners, rn],
     }));
   }
 
   function addTote() {
-    setProject((p) => ({ ...p, refBoxes: [...p.refBoxes, defaultRefBox()] }));
+    const b = { ...defaultRefBox(), position: roomInteriorPoint(project.room.walls) };
+    setProject((p) => ({ ...p, refBoxes: [...p.refBoxes, b] }));
+    setSelId(b.id);
   }
 
   const overall = worstLevel(checks);
@@ -837,6 +858,21 @@ function Workspace({
                   />
                 </div>
               ))}
+              <button
+                title="Size & centre this runner to span across its cabinets, resting on top"
+                onClick={() =>
+                  setProject((p) => ({
+                    ...p,
+                    runners: p.runners.map((x) =>
+                      x.id === r.id
+                        ? { ...x, ...fitRunnerToCarcasses(x, p) }
+                        : x,
+                    ),
+                  }))
+                }
+              >
+                Span cabinets
+              </button>
               <button
                 onClick={() =>
                   setProject((p) => ({

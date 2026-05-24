@@ -6,10 +6,33 @@ import {
   rectInsideRoom,
   polygonPerimeterInches,
   roomReferenceSlabs,
+  roomInteriorPoint,
   setJutDepthSymmetric,
   setWallLength,
 } from "./room";
 import { defaultProject, rectWalls } from "./defaults";
+
+describe("roomInteriorPoint", () => {
+  it("returns a point inside a simple rectangle", () => {
+    const walls = rectWalls(100, 80);
+    const p = roomInteriorPoint(walls);
+    expect(pointInRoom(walls, p.x, p.z)).toBe(true);
+  });
+  it("returns a point inside a notched room", () => {
+    const walls = [
+      { x: 0, z: 0 },
+      { x: 128.5, z: 0 },
+      { x: 128.5, z: 20.75 },
+      { x: 114.5, z: 20.75 },
+      { x: 114.5, z: 33.75 },
+      { x: 126, z: 33.75 },
+      { x: 126, z: 106 },
+      { x: 0, z: 106 },
+    ];
+    const p = roomInteriorPoint(walls);
+    expect(pointInRoom(walls, p.x, p.z)).toBe(true);
+  });
+});
 
 describe("rectInsideRoom flush/exact fit", () => {
   const walls = rectWalls(100, 100); // interior -50..50 on both axes

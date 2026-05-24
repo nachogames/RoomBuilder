@@ -274,6 +274,28 @@ export function pointInRoom(walls: Pt[], px: number, pz: number): boolean {
   return inside;
 }
 
+/** A point guaranteed (best-effort) to be inside the room — for spawning new
+ *  items where they're visible and grabbable. Centroid if it's inside, else a
+ *  scan of the bounding box. */
+export function roomInteriorPoint(walls: Pt[]): Pt {
+  const c = centroid(walls);
+  if (pointInRoom(walls, c.x, c.z)) return c;
+  const xs = walls.map((p) => p.x);
+  const zs = walls.map((p) => p.z);
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minZ = Math.min(...zs);
+  const maxZ = Math.max(...zs);
+  for (let gz = 1; gz < 10; gz++) {
+    for (let gx = 1; gx < 10; gx++) {
+      const x = minX + ((maxX - minX) * gx) / 10;
+      const z = minZ + ((maxZ - minZ) * gz) / 10;
+      if (pointInRoom(walls, x, z)) return { x, z };
+    }
+  }
+  return c;
+}
+
 /** Reference geometry for the 3D scene: a slab per wall edge + a flat
  *  baseboard band per edge, offset inward toward the room centroid. */
 export function roomReferenceSlabs(room: Room): RefSlab[] {

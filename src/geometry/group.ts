@@ -77,6 +77,28 @@ export function groupAABB(r: Runner, project: Project): AABB {
   };
 }
 
+/** Size + position a runner to span across its owned cabinets (ends flush with
+ *  their outer edges — no overhang), centred on them and resting on top.
+ *  Returns {} if it owns no cabinets. */
+export function fitRunnerToCarcasses(
+  r: Runner,
+  project: Project,
+): Partial<Runner> {
+  const owned = ownedCarcasses(r, project);
+  if (owned.length === 0) return {};
+  const lefts = owned.map((c) => c.position.x - c.width / 2);
+  const rights = owned.map((c) => c.position.x + c.width / 2);
+  const left = Math.min(...lefts);
+  const right = Math.max(...rights);
+  const avgZ = owned.reduce((s, c) => s + c.position.z, 0) / owned.length;
+  const top = Math.max(...owned.map((c) => (c.baseHeight ?? 0) + c.height));
+  return {
+    length: right - left,
+    position: { x: (left + right) / 2, z: avgZ },
+    baseHeight: top,
+  };
+}
+
 export interface GroupTranslation {
   runner: Runner;
   /** new positions for owned cabinets, keyed by carcass id */

@@ -1,7 +1,8 @@
-import { Canvas, useFrame } from "@react-three/fiber";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { OrbitControls, GizmoHelper, GizmoViewport } from "@react-three/drei";
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
+import { loadViewState, saveViewState } from "../ui/viewState";
 import type { Carcass, Project, RefBox } from "../domain/types";
 import { buildCarcass } from "../geometry/carcass";
 import { buildRunner } from "../geometry/runner";
@@ -223,6 +224,32 @@ function RoomShell({
   );
 }
 
+/** Restores the saved camera on mount and saves it after each interaction. */
+function CameraPersistence() {
+  const camera = useThree((s) => s.camera);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const controls = useThree((s) => s.controls) as any;
+  useEffect(() => {
+    if (!controls) return;
+    const v = loadViewState().cam;
+    if (v?.pos && v?.target) {
+      camera.position.set(v.pos[0], v.pos[1], v.pos[2]);
+      controls.target.set(v.target[0], v.target[1], v.target[2]);
+      controls.update();
+    }
+    const save = () =>
+      saveViewState({
+        cam: {
+          pos: camera.position.toArray(),
+          target: controls.target.toArray(),
+        },
+      });
+    controls.addEventListener("end", save);
+    return () => controls.removeEventListener("end", save);
+  }, [controls, camera]);
+  return null;
+}
+
 export function Scene({
   project,
   dollhouse = true,
@@ -250,6 +277,7 @@ export function Scene({
       <RunnerMeshes project={project} />
       <RefBoxes project={project} />
       <OrbitControls makeDefault target={[0, project.room.ceilingHeight / 3, 0]} />
+      <CameraPersistence />
       <GizmoHelper alignment="bottom-right" margin={[64, 64]}>
         <GizmoViewport labelColor="white" axisHeadScale={1} />
       </GizmoHelper>
