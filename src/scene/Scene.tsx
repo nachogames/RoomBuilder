@@ -1,12 +1,13 @@
-import { Canvas } from "@react-three/fiber";
+import { Canvas, useFrame } from "@react-three/fiber";
 import { OrbitControls, GizmoHelper, GizmoViewport } from "@react-three/drei";
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import * as THREE from "three";
 import type { Carcass, Project, RefBox } from "../domain/types";
 import { buildCarcass } from "../geometry/carcass";
 import { buildRunner } from "../geometry/runner";
 import { frustumGeometry } from "./frustum";
-import { roomReferenceSlabs } from "../domain/room";
+import { wallFacesCamera } from "./dollhouse";
+import { roomReferenceSlabs, type RefSlab } from "../domain/room";
 import type { Part, PartRole } from "../geometry/types";
 
 const ROLE_COLOR: Record<PartRole, string> = {
@@ -127,43 +128,74 @@ function RefBoxes({ project }: { project: Project }) {
   );
 }
 
-function RoomShell({ project }: { project: Project }) {
+const SLAB_COLOR = {
+  wall: "#3a6ea5",
+  baseboard: "#6a6a72",
+} as const;
+
+function SlabMesh({ s, dollhouse }: { s: RefSlab; dollhouse: boolean }) {
+  const ref = useRef<THREE.Mesh>(null);
+  useFrame(({ camera }) => {
+    const m = ref.current;
+    if (!m) return;
+    m.visible =
+      !dollhouse || !s.normal
+        ? true
+        : !wallFacesCamera(
+            s.normal,
+            { x: s.center.x, z: s.center.z },
+            { x: camera.position.x, z: camera.position.z },
+          );
+  });
+  return (
+    <mesh
+      ref={ref}
+      position={[s.center.x, s.center.y, s.center.z]}
+      rotation={[0, s.rotY, 0]}
+      renderOrder={-1}
+    >
+      <boxGeometry args={[s.size.x, s.size.y, s.size.z]} />
+      <meshStandardMaterial
+        color={SLAB_COLOR[s.kind]}
+        transparent
+        opacity={s.kind === "baseboard" ? 0.85 : 0.16}
+        side={2}
+      />
+    </mesh>
+  );
+}
+
+function RoomShell({
+  project,
+  dollhouse,
+}: {
+  project: Project;
+  dollhouse: boolean;
+}) {
   const { length, width } = project.room;
   const slabs = useMemo(
     () => roomReferenceSlabs(project.room),
     [project.room],
   );
-  const COLOR = {
-    wall: "#3a6ea5",
-    bump: "#b06a3a",
-    baseboard: "#6a6a72",
-  } as const;
   return (
     <group>
       <gridHelper
         args={[Math.max(length, width) * 1.5, 24, "#444", "#2a2a2a"]}
       />
       {slabs.map((s) => (
-        <mesh
-          key={s.id}
-          position={[s.center.x, s.center.y, s.center.z]}
-          rotation={[0, s.rotY, 0]}
-          renderOrder={-1}
-        >
-          <boxGeometry args={[s.size.x, s.size.y, s.size.z]} />
-          <meshStandardMaterial
-            color={COLOR[s.kind]}
-            transparent
-            opacity={s.kind === "baseboard" ? 0.85 : 0.16}
-            side={2}
-          />
-        </mesh>
+        <SlabMesh key={s.id} s={s} dollhouse={dollhouse} />
       ))}
     </group>
   );
 }
 
-export function Scene({ project }: { project: Project }) {
+export function Scene({
+  project,
+  dollhouse = true,
+}: {
+  project: Project;
+  dollhouse?: boolean;
+}) {
   const span = Math.max(
     project.room.length,
     project.room.width,
@@ -177,7 +209,7 @@ export function Scene({ project }: { project: Project }) {
     >
       <ambientLight intensity={0.6} />
       <directionalLight position={[100, 200, 120]} intensity={1.1} castShadow />
-      <RoomShell project={project} />
+      <RoomShell project={project} dollhouse={dollhouse} />
       {project.carcasses.map((c) => (
         <CarcassGroup key={c.id} carcass={c} project={project} />
       ))}

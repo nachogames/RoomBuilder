@@ -145,6 +145,7 @@ function Workspace({
   const [collapse, setCollapse] = useState<Record<string, boolean>>({});
   const [tab, setTab] = useState<Tab>("3D");
   const [showDims, setShowDims] = useState(true);
+  const [dollhouse, setDollhouse] = useState(true);
   const [savedNames, setSavedNames] = useState<string[]>([]);
   const [status, setStatus] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
@@ -992,8 +993,28 @@ function Workspace({
 
           <section className="content">
             {tab === "3D" && (
-              <div className="canvas-wrap">
-                <Scene project={project} />
+              <div className="canvas-wrap" style={{ position: "relative" }}>
+                <label
+                  className="field"
+                  style={{
+                    position: "absolute",
+                    top: 8,
+                    left: 8,
+                    zIndex: 1,
+                    background: "#0008",
+                    padding: "4px 8px",
+                    borderRadius: 4,
+                  }}
+                  title="Hide whichever walls sit between you and the room"
+                >
+                  <span>Dollhouse</span>
+                  <input
+                    type="checkbox"
+                    checked={dollhouse}
+                    onChange={(e) => setDollhouse(e.target.checked)}
+                  />
+                </label>
+                <Scene project={project} dollhouse={dollhouse} />
               </div>
             )}
 

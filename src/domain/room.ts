@@ -7,6 +7,8 @@ export interface RefSlab {
   size: { x: number; y: number; z: number };
   /** rotation about the Y (up) axis, radians */
   rotY: number;
+  /** outward (away from room) unit normal in x/z, for dollhouse culling */
+  normal?: { x: number; z: number };
 }
 
 const dist = (a: Pt, b: Pt) => Math.hypot(b.x - a.x, b.z - a.z);
@@ -232,12 +234,14 @@ export function roomReferenceSlabs(room: Room): RefSlab[] {
 
     // The polygon edge is the room's INTERIOR face, so the wall sits entirely
     // OUTSIDE it: shift the slab outward (−normal) by half its thickness.
+    const outward = { x: -nx, z: -nz };
     out.push({
       id: `w${i}`,
       kind: "wall",
       center: { x: mx - nx * (t / 2), y: H / 2, z: mz - nz * (t / 2) },
       size: { x: len + t, y: H, z: t },
       rotY: -ang,
+      normal: outward,
     });
 
     if (room.baseboard) {
@@ -250,6 +254,7 @@ export function roomReferenceSlabs(room: Room): RefSlab[] {
         center: { x: mx + nx * off, y: bh / 2, z: mz + nz * off },
         size: { x: len, y: bh, z: bt },
         rotY: -ang,
+        normal: outward,
       });
     }
   });
