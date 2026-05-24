@@ -171,6 +171,95 @@ export function deskAssembly(): { carcasses: Carcass[]; runner: Runner } {
   return { carcasses: [left, right], runner };
 }
 
+/** The user's actual room: 8-corner room with a notch, a left-aligned desk
+ *  (2 cabinets + 1-1/2" ply top) along the back wall, and one tapered tote. */
+export function myRoom(): Project {
+  const cat = defaultCatalog();
+  const cabW = 14.125;
+  const cabD = 24;
+  const cabH = 27.25; // 28.75 overall − 1.5 top
+  const deskLen = 98.25;
+  const deskDepth = 26.25;
+  const deskBase = 27.25; // underside; top surface 28.75 with 1.5" ply
+  const gap = (deskLen - 2 * cabW) / 3; // equal spacing under the top
+  // desktop spans z 0..deskDepth; cab front inset 1.75" → centre at:
+  const cabCenterZ = deskDepth - 1.75 - cabD / 2;
+
+  const makeCab = (label: string, cx: number): Carcass => {
+    const base: Carcass = {
+      ...defaultBookcase(),
+      id: uid("carcass"),
+      label,
+      width: cabW,
+      height: cabH,
+      depth: cabD,
+      toeKickHeight: 3,
+      targetOpeningWidth: undefined,
+      shelves: [],
+      position: { x: cx, z: cabCenterZ },
+      rotationDeg: 0,
+      baseHeight: 0,
+    };
+    base.shelves = evenlySpacedShelves(base, cat, 1, "shelf-pin");
+    return base;
+  };
+
+  const left = makeCab("Desk cabinet L", gap + cabW / 2);
+  const right = makeCab("Desk cabinet R", gap + cabW + gap + cabW / 2);
+
+  const desktop: Runner = {
+    ...defaultRunner([left.id, right.id]),
+    label: "Desk top",
+    boardMaterialId: PLY_15,
+    length: deskLen,
+    depth: deskDepth,
+    position: { x: deskLen / 2, z: deskDepth / 2 },
+    baseHeight: deskBase,
+    fastening: "screw-through",
+  };
+
+  const tote: RefBox = {
+    ...defaultRefBox(),
+    id: uid("box"),
+    label: "Tote",
+    width: 13,
+    height: 16.5,
+    depth: 19,
+    topWidth: 16.25,
+    topDepth: 22.25,
+    position: { x: 60, z: 70 },
+    rotationDeg: 0,
+    baseHeight: 0,
+  };
+
+  return {
+    schemaVersion: 1,
+    name: "My Room",
+    units: "in",
+    catalog: cat,
+    room: {
+      length: 128.5,
+      width: 106,
+      ceilingHeight: 96,
+      wallThickness: 4.5,
+      walls: [
+        { x: 0, z: 0 },
+        { x: 128.5, z: 0 },
+        { x: 128.5, z: 20.75 },
+        { x: 114.5, z: 20.75 },
+        { x: 114.5, z: 33.75 },
+        { x: 126, z: 33.75 },
+        { x: 126, z: 106 },
+        { x: 0, z: 106 },
+      ],
+      baseboard: { height: 3.5, thickness: 0.5 },
+    },
+    carcasses: [left, right],
+    runners: [desktop],
+    refBoxes: [tote],
+  };
+}
+
 export function defaultProject(): Project {
   return {
     schemaVersion: 1,

@@ -148,13 +148,18 @@ export interface Runner {
   supports: Support[];
 }
 
-/** A plain reference object (e.g. a storage tote) for fit-checking only. */
+/** A plain reference object (e.g. a storage tote) for fit-checking only.
+ *  `width`/`depth` are the BOTTOM footprint. Optional `topWidth`/`topDepth`
+ *  give a tapered (frustum) top; when absent it's a straight box. */
 export interface RefBox {
   id: string;
   label: string;
   width: Inches;
   height: Inches;
   depth: Inches;
+  /** tapered top footprint; omitted = straight box (= width/depth) */
+  topWidth?: Inches;
+  topDepth?: Inches;
   position: { x: Inches; z: Inches };
   rotationDeg: number;
   baseHeight?: Inches;

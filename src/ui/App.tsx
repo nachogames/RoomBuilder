@@ -16,6 +16,7 @@ import {
   rectWalls,
   uid,
   RUNNER_PROFILES,
+  myRoom,
 } from "../domain/defaults";
 import { evenlySpacedShelves } from "../domain/shelves";
 import { buildProject } from "../geometry";
@@ -319,6 +320,17 @@ function Workspace({
         </button>
         <button onClick={() => exportProjectJson(project)}>Export JSON</button>
         <button onClick={() => fileRef.current?.click()}>Import JSON</button>
+        <button
+          title="Load the saved room preset (replaces the current project)"
+          onClick={() => {
+            const p = normalizeProject(myRoom());
+            setProject(p);
+            setSelId(p.runners[0]?.id ?? "");
+            setStatus("Loaded My Room");
+          }}
+        >
+          My Room
+        </button>
         <input
           ref={fileRef}
           type="file"

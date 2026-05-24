@@ -1,9 +1,11 @@
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls, GizmoHelper, GizmoViewport } from "@react-three/drei";
 import { useMemo } from "react";
-import type { Carcass, Project } from "../domain/types";
+import * as THREE from "three";
+import type { Carcass, Project, RefBox } from "../domain/types";
 import { buildCarcass } from "../geometry/carcass";
 import { buildRunner } from "../geometry/runner";
+import { frustumGeometry } from "./frustum";
 import { roomReferenceSlabs } from "../domain/room";
 import type { Part, PartRole } from "../geometry/types";
 
@@ -76,26 +78,50 @@ function RunnerMeshes({ project }: { project: Project }) {
   );
 }
 
+function ToteMesh({ b }: { b: RefBox }) {
+  const tapered = b.topWidth != null && b.topDepth != null;
+  const geom = useMemo(() => {
+    if (!tapered) return null;
+    const { positions, indices } = frustumGeometry(
+      b.width,
+      b.depth,
+      b.topWidth as number,
+      b.topDepth as number,
+      b.height,
+    );
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    g.setIndex(indices);
+    g.computeVertexNormals();
+    return g;
+  }, [tapered, b.width, b.depth, b.topWidth, b.topDepth, b.height]);
+
+  return (
+    <mesh
+      position={[
+        b.position.x,
+        (b.baseHeight ?? 0) + b.height / 2,
+        b.position.z,
+      ]}
+      rotation={[0, (b.rotationDeg * Math.PI) / 180, 0]}
+      geometry={geom ?? undefined}
+    >
+      {!tapered && <boxGeometry args={[b.width, b.height, b.depth]} />}
+      <meshStandardMaterial
+        color="#5fa8d3"
+        transparent
+        opacity={0.45}
+        side={THREE.DoubleSide}
+      />
+    </mesh>
+  );
+}
+
 function RefBoxes({ project }: { project: Project }) {
   return (
     <>
       {project.refBoxes.map((b) => (
-        <mesh
-          key={b.id}
-          position={[
-            b.position.x,
-            (b.baseHeight ?? 0) + b.height / 2,
-            b.position.z,
-          ]}
-          rotation={[0, (b.rotationDeg * Math.PI) / 180, 0]}
-        >
-          <boxGeometry args={[b.width, b.height, b.depth]} />
-          <meshStandardMaterial
-            color="#5fa8d3"
-            transparent
-            opacity={0.45}
-          />
-        </mesh>
+        <ToteMesh key={b.id} b={b} />
       ))}
     </>
   );
