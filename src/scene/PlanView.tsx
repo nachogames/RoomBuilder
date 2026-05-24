@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import type { Project, Pt } from "../domain/types";
 import { translateGroup } from "../geometry/group";
+import { findContainer, clampToInterior } from "../geometry/container";
 import { resolveMove } from "./dragMath";
 import {
   baseboardLengthInches,
@@ -179,13 +180,21 @@ export function PlanView({
       // follow via translateGroup; drag a cabinet alone to nudge it after.
       const tx = x + drag.dx;
       const tz = z + drag.dz;
+      const p0 = r.position;
+      // If the shelf fits inside a bookcase it overlaps, clamp to that
+      // bookcase's interior (sides + back, front open); else use room walls.
+      const container = findContainer(
+        { id: r.id, w: r.length, d: r.depth, cx: tx, cz: tz, excludeIds: r.spannedCarcassIds },
+        project,
+      );
       const ok = (px: number, pz: number) =>
         rectInsideRoom(walls, px, pz, r.length, r.depth, r.rotationDeg);
-      const p0 = r.position;
       // Wall-slide when a respecting position exists, but NEVER freeze: a long
       // shelf that can't fit any in-room position still follows the cursor.
-      const pos = resolveMove(ok, tx, tz, p0, true);
-      if (r.groupDrag) {
+      const pos = container
+        ? clampToInterior(container, r.length, r.depth, tx, tz, project)
+        : resolveMove(ok, tx, tz, p0, true);
+      if (r.groupDrag && !container) {
         // desk top: carry the spanned cabinets along
         const t = translateGroup(r, project, pos.x - p0.x, pos.z - p0.z);
         setProject((pr) => ({
@@ -212,10 +221,17 @@ export function PlanView({
       // constrain by the larger (top) footprint — its outermost edge
       const bw = Math.max(bx.width, bx.topWidth ?? bx.width);
       const bd = Math.max(bx.depth, bx.topDepth ?? bx.depth);
+      const p0 = bx.position;
+      // capture inside a bookcase it fits in; else clamp to the room walls
+      const container = findContainer(
+        { id: bx.id, w: bw, d: bd, cx: tx, cz: tz },
+        project,
+      );
       const ok = (px: number, pz: number) =>
         rectInsideRoom(walls, px, pz, bw, bd, bx.rotationDeg);
-      const p0 = bx.position;
-      const pos = resolveMove(ok, tx, tz, p0, false);
+      const pos = container
+        ? clampToInterior(container, bw, bd, tx, tz, project)
+        : resolveMove(ok, tx, tz, p0, false);
       if (pos === p0) return;
       setProject((pr) => ({
         ...pr,
