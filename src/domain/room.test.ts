@@ -11,6 +11,22 @@ import {
 } from "./room";
 import { defaultProject, rectWalls } from "./defaults";
 
+describe("rectInsideRoom flush/exact fit", () => {
+  const walls = rectWalls(100, 100); // interior -50..50 on both axes
+
+  it("allows a footprint exactly the size of the opening (flush)", () => {
+    expect(rectInsideRoom(walls, 0, 0, 100, 100)).toBe(true);
+  });
+
+  it("still blocks a footprint larger than the opening", () => {
+    expect(rectInsideRoom(walls, 0, 0, 101, 100)).toBe(false);
+  });
+
+  it("allows a comfortably smaller footprint", () => {
+    expect(rectInsideRoom(walls, 0, 0, 50, 50)).toBe(true);
+  });
+});
+
 describe("roomReferenceSlabs wall placement", () => {
   it("puts the wall's inner face on the polygon line (wall sits outside)", () => {
     const room = {

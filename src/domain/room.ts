@@ -240,8 +240,12 @@ export function rectInsideRoom(
   const a = (rotDeg * Math.PI) / 180;
   const ca = Math.cos(a);
   const sa = Math.sin(a);
-  const hw = w / 2;
-  const hd = d / 2;
+  // Shrink the test footprint by a hair so an EXACT/flush fit (corners landing
+  // on the wall line) counts as inside instead of being rejected on the
+  // boundary. 1/32" is below visible overlap; real overhang still blocks.
+  const EPS = 1 / 32;
+  const hw = Math.max(0, w / 2 - EPS);
+  const hd = Math.max(0, d / 2 - EPS);
   for (const [lx, lz] of [
     [-hw, -hd],
     [hw, -hd],
