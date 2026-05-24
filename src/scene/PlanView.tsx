@@ -218,20 +218,19 @@ export function PlanView({
       if (!bx) return;
       const tx = x + drag.dx;
       const tz = z + drag.dz;
-      // room resistance uses the larger (top) footprint (outermost edge)…
+      // use the larger (top) outline — the tote's outermost visible edge — for
+      // both room walls and the bookcase interior, so that edge stops at walls.
       const bw = Math.max(bx.width, bx.topWidth ?? bx.width);
       const bd = Math.max(bx.depth, bx.topDepth ?? bx.depth);
-      // …but capture inside a bookcase uses the BOTTOM (what sits between the
-      // inner walls; the wider top overhangs above them).
       const p0 = bx.position;
       const container = findContainer(
-        { id: bx.id, w: bx.width, d: bx.depth, cx: tx, cz: tz },
+        { id: bx.id, w: bw, d: bd, cx: tx, cz: tz },
         project,
       );
       const ok = (px: number, pz: number) =>
         rectInsideRoom(walls, px, pz, bw, bd, bx.rotationDeg);
       const pos = container
-        ? clampToInterior(container, bx.width, bx.depth, tx, tz, project)
+        ? clampToInterior(container, bw, bd, tx, tz, project)
         : resolveMove(ok, tx, tz, p0, false);
       if (pos === p0) return;
       setProject((pr) => ({
