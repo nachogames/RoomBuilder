@@ -60,14 +60,24 @@ describe("fitRunnerToCarcasses", () => {
       baseHeight: 0,
       position: { x: 50, z: 4 },
     };
-    const r = { ...defaultRunner(["A", "B"]), id: "R" };
+    // a shelf (groupDrag false) spans the GAP between the cabinets:
+    // left cab right edge -39.625 .. right cab left edge 39.625 → length 79.25
+    const r = { ...defaultRunner(["A", "B"]), id: "R", groupDrag: false };
     const p = { ...defaultProject(), carcasses: [a, b], runners: [r] };
     const patch = fitRunnerToCarcasses(r, p);
-    // inner extent: (-50-10.375+0.75) .. (50+10.375-0.75) → length 119.25
-    expect(patch.length).toBeCloseTo(119.25, 6);
+    expect(patch.length).toBeCloseTo(79.25, 6);
     expect(patch.position!.x).toBeCloseTo(0, 6);
     expect(patch.position!.z).toBeCloseTo(4, 6);
     expect(patch.baseHeight).toBeCloseTo(30, 6); // top of the cabinets
+  });
+
+  it("a desk top (groupDrag) covers the cabinets to their outer edges", () => {
+    const a: Carcass = { ...defaultBookcase(), id: "A", width: 20.75, height: 30, baseHeight: 0, position: { x: -50, z: 0 } };
+    const b: Carcass = { ...defaultBookcase(), id: "B", width: 20.75, height: 30, baseHeight: 0, position: { x: 50, z: 0 } };
+    const r = { ...defaultRunner(["A", "B"]), id: "R", groupDrag: true };
+    const p = { ...defaultProject(), carcasses: [a, b], runners: [r] };
+    // outer extent: -60.375 .. 60.375 → length 120.75
+    expect(fitRunnerToCarcasses(r, p).length).toBeCloseTo(120.75, 6);
   });
 
   it("returns {} with no owned cabinets", () => {

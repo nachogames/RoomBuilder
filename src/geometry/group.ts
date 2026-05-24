@@ -78,9 +78,12 @@ export function groupAABB(r: Runner, project: Project): AABB {
   };
 }
 
-/** Size + position a runner to span its owned cabinets, ending flush with the
- *  INNER side walls of the outermost cabinets (touches the inside), centred on
- *  them and resting on top. Returns {} if it owns no cabinets. */
+/** Size + position a runner to span its owned cabinets, resting on top.
+ *  - A desk top (groupDrag) covers the cabinets: ends flush with their outer
+ *    edges.
+ *  - A shelf (not groupDrag) fills the GAP between the two outermost cabinets:
+ *    ends butt against the facing inner side walls. (One cabinet → its interior
+ *    width.) Returns {} if it owns no cabinets. */
 export function fitRunnerToCarcasses(
   r: Runner,
   project: Project,
@@ -89,12 +92,29 @@ export function fitRunnerToCarcasses(
   if (owned.length === 0) return {};
   const sideT = (c: Carcass) =>
     materialThickness(project.catalog.materials, c.carcassMaterialId);
-  const innerLefts = owned.map((c) => c.position.x - c.width / 2 + sideT(c));
-  const innerRights = owned.map((c) => c.position.x + c.width / 2 - sideT(c));
-  const left = Math.min(...innerLefts);
-  const right = Math.max(...innerRights);
   const avgZ = owned.reduce((s, c) => s + c.position.z, 0) / owned.length;
   const top = Math.max(...owned.map((c) => (c.baseHeight ?? 0) + c.height));
+
+  let left: number;
+  let right: number;
+  if (r.groupDrag) {
+    // desk top: cover the cabinets, flush with their outer edges
+    left = Math.min(...owned.map((c) => c.position.x - c.width / 2));
+    right = Math.max(...owned.map((c) => c.position.x + c.width / 2));
+  } else {
+    // shelf: span the gap between the leftmost and rightmost cabinets,
+    // butting against the facing side walls
+    const sorted = [...owned].sort((a, b) => a.position.x - b.position.x);
+    const leftCab = sorted[0];
+    const rightCab = sorted[sorted.length - 1];
+    left = leftCab.position.x + leftCab.width / 2; // right face of left cab
+    right = rightCab.position.x - rightCab.width / 2; // left face of right cab
+    if (right <= left) {
+      // single cabinet (or overlap): fall back to its interior width
+      left = leftCab.position.x - leftCab.width / 2 + sideT(leftCab);
+      right = rightCab.position.x + rightCab.width / 2 - sideT(rightCab);
+    }
+  }
   return {
     length: right - left,
     position: { x: (left + right) / 2, z: avgZ },
