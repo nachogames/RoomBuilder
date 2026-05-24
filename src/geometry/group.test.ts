@@ -63,8 +63,8 @@ describe("fitRunnerToCarcasses", () => {
     const r = { ...defaultRunner(["A", "B"]), id: "R" };
     const p = { ...defaultProject(), carcasses: [a, b], runners: [r] };
     const patch = fitRunnerToCarcasses(r, p);
-    // outer extent: -50-10.375 .. 50+10.375 → length 120.75, centre 0
-    expect(patch.length).toBeCloseTo(120.75, 6);
+    // inner extent: (-50-10.375+0.75) .. (50+10.375-0.75) → length 119.25
+    expect(patch.length).toBeCloseTo(119.25, 6);
     expect(patch.position!.x).toBeCloseTo(0, 6);
     expect(patch.position!.z).toBeCloseTo(4, 6);
     expect(patch.baseHeight).toBeCloseTo(30, 6); // top of the cabinets

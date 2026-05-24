@@ -1,4 +1,5 @@
 import type { Carcass, Project, Runner } from "../domain/types";
+import { materialThickness } from "./types";
 
 export interface AABB {
   minX: number;
@@ -77,19 +78,21 @@ export function groupAABB(r: Runner, project: Project): AABB {
   };
 }
 
-/** Size + position a runner to span across its owned cabinets (ends flush with
- *  their outer edges — no overhang), centred on them and resting on top.
- *  Returns {} if it owns no cabinets. */
+/** Size + position a runner to span its owned cabinets, ending flush with the
+ *  INNER side walls of the outermost cabinets (touches the inside), centred on
+ *  them and resting on top. Returns {} if it owns no cabinets. */
 export function fitRunnerToCarcasses(
   r: Runner,
   project: Project,
 ): Partial<Runner> {
   const owned = ownedCarcasses(r, project);
   if (owned.length === 0) return {};
-  const lefts = owned.map((c) => c.position.x - c.width / 2);
-  const rights = owned.map((c) => c.position.x + c.width / 2);
-  const left = Math.min(...lefts);
-  const right = Math.max(...rights);
+  const sideT = (c: Carcass) =>
+    materialThickness(project.catalog.materials, c.carcassMaterialId);
+  const innerLefts = owned.map((c) => c.position.x - c.width / 2 + sideT(c));
+  const innerRights = owned.map((c) => c.position.x + c.width / 2 - sideT(c));
+  const left = Math.min(...innerLefts);
+  const right = Math.max(...innerRights);
   const avgZ = owned.reduce((s, c) => s + c.position.z, 0) / owned.length;
   const top = Math.max(...owned.map((c) => (c.baseHeight ?? 0) + c.height));
   return {
