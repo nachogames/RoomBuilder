@@ -5,6 +5,8 @@ const KEY = "roombuilder.view";
 export interface ViewState {
   tab?: string;
   sel?: string;
+  /** name of the last-opened saved project, to reload on startup */
+  project?: string;
   cam?: { pos: number[]; target: number[] };
 }
 

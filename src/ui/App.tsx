@@ -185,12 +185,27 @@ function Workspace({
         .then(() => listProjects())
         .then(setSavedNames)
         .catch(() => {});
+      saveViewState({ project: project.name });
     }, 800);
     return () => clearTimeout(t);
   }, [project]);
 
   useEffect(() => {
     listProjects().then(setSavedNames).catch(() => {});
+    // restore the last-opened project on startup
+    const last = view0.project;
+    if (last) {
+      loadProject(last)
+        .then((p) => {
+          if (p) {
+            const np = normalizeProject(p);
+            setProject(np);
+            if (!view0.sel) setSelId(np.carcasses[0]?.id ?? "");
+          }
+        })
+        .catch(() => {});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -372,13 +387,14 @@ function Workspace({
           }}
         />
         <select
-          value=""
+          value={savedNames.includes(project.name) ? project.name : ""}
           onChange={(e) => {
             if (e.target.value)
               loadProject(e.target.value).then((p) => {
                 if (p) {
                   setProject(normalizeProject(p));
                   setSelId(p.carcasses[0]?.id ?? "");
+                  saveViewState({ project: e.target.value });
                 }
               });
           }}

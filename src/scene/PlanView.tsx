@@ -24,7 +24,7 @@ type Drag =
       base: Pt[]; // wall snapshot at drag start
       spawn: boolean; // straight run -> spawn jut; jut face -> translate
     }
-  | { kind: "carcass" | "box" | "runner"; id: string }
+  | { kind: "carcass" | "box" | "runner"; id: string; dx: number; dz: number }
   | null;
 
 /** Snap to a clean 1/4" so freehand wall edits land square. */
@@ -154,17 +154,20 @@ export function PlanView({
     } else if (drag.kind === "carcass") {
       const c = project.carcasses.find((k) => k.id === drag.id);
       if (!c) return;
+      // apply the grab offset so the piece tracks the cursor (no jump)
+      const tx = x + drag.dx;
+      const tz = z + drag.dz;
       // wall resistance with slide: block only the axis that would push the
       // footprint through a wall, so you can still run along it.
       const ok = (px: number, pz: number) =>
         rectInsideRoom(walls, px, pz, c.width, c.depth, c.rotationDeg);
       const p0 = c.position;
-      const pos = ok(x, z)
-        ? { x, z }
-        : ok(x, p0.z)
-          ? { x, z: p0.z }
-          : ok(p0.x, z)
-            ? { x: p0.x, z }
+      const pos = ok(tx, tz)
+        ? { x: tx, z: tz }
+        : ok(tx, p0.z)
+          ? { x: tx, z: p0.z }
+          : ok(p0.x, tz)
+            ? { x: p0.x, z: tz }
             : p0;
       if (pos === p0) return;
       setProject((pr) => ({
@@ -178,6 +181,8 @@ export function PlanView({
       if (!r) return;
       // desk group: clamp the union footprint (desktop incl. overhang + owned
       // cabinets); whichever edge sticks out furthest is what the wall blocks.
+      const tx = x + drag.dx;
+      const tz = z + drag.dz;
       const bb = groupAABB(r, project);
       const w = bb.maxX - bb.minX;
       const d = bb.maxZ - bb.minZ;
@@ -186,12 +191,12 @@ export function PlanView({
       const ok = (px: number, pz: number) =>
         rectInsideRoom(walls, px + ox, pz + oz, w, d, 0);
       const p0 = r.position;
-      const pos = ok(x, z)
-        ? { x, z }
-        : ok(x, p0.z)
-          ? { x, z: p0.z }
-          : ok(p0.x, z)
-            ? { x: p0.x, z }
+      const pos = ok(tx, tz)
+        ? { x: tx, z: tz }
+        : ok(tx, p0.z)
+          ? { x: tx, z: p0.z }
+          : ok(p0.x, tz)
+            ? { x: p0.x, z: tz }
             : p0;
       if (pos === p0) return;
       const t = translateGroup(r, project, pos.x - p0.x, pos.z - p0.z);
@@ -205,15 +210,17 @@ export function PlanView({
     } else {
       const bx = project.refBoxes.find((k) => k.id === drag.id);
       if (!bx) return;
+      const tx = x + drag.dx;
+      const tz = z + drag.dz;
       const ok = (px: number, pz: number) =>
         rectInsideRoom(walls, px, pz, bx.width, bx.depth, bx.rotationDeg);
       const p0 = bx.position;
-      const pos = ok(x, z)
-        ? { x, z }
-        : ok(x, p0.z)
-          ? { x, z: p0.z }
-          : ok(p0.x, z)
-            ? { x: p0.x, z }
+      const pos = ok(tx, tz)
+        ? { x: tx, z: tz }
+        : ok(tx, p0.z)
+          ? { x: tx, z: p0.z }
+          : ok(p0.x, tz)
+            ? { x: p0.x, z: tz }
             : p0;
       if (pos === p0) return;
       setProject((pr) => ({
@@ -357,7 +364,13 @@ export function PlanView({
             onPointerDown={(e) => {
               (e.target as Element).setPointerCapture?.(e.pointerId);
               onSelect(r.id);
-              setDrag({ kind: "runner", id: r.id });
+              const rp = toRoom(e);
+              setDrag({
+                kind: "runner",
+                id: r.id,
+                dx: rp ? r.position.x - rp.x : 0,
+                dz: rp ? r.position.z - rp.z : 0,
+              });
             }}
           >
             <rect
@@ -392,7 +405,13 @@ export function PlanView({
               onPointerDown={(e) => {
                 (e.target as Element).setPointerCapture?.(e.pointerId);
                 onSelect(cc.id);
-                setDrag({ kind: "carcass", id: cc.id });
+                const rp = toRoom(e);
+                setDrag({
+                  kind: "carcass",
+                  id: cc.id,
+                  dx: rp ? cc.position.x - rp.x : 0,
+                  dz: rp ? cc.position.z - rp.z : 0,
+                });
               }}
             >
               <rect
@@ -477,7 +496,13 @@ export function PlanView({
             onPointerDown={(e) => {
               (e.target as Element).setPointerCapture?.(e.pointerId);
               onSelect(b.id);
-              setDrag({ kind: "box", id: b.id });
+              const rp = toRoom(e);
+              setDrag({
+                kind: "box",
+                id: b.id,
+                dx: rp ? b.position.x - rp.x : 0,
+                dz: rp ? b.position.z - rp.z : 0,
+              });
             }}
           >
             <rect
