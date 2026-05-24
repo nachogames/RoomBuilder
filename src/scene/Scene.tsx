@@ -6,6 +6,7 @@ import type { Carcass, Project, RefBox } from "../domain/types";
 import { buildCarcass } from "../geometry/carcass";
 import { buildRunner } from "../geometry/runner";
 import { frustumGeometry } from "./frustum";
+import { prismGeometry } from "./prism";
 import { wallFacesCamera } from "./dollhouse";
 import { roomReferenceSlabs, type RefSlab } from "../domain/room";
 import type { Part, PartRole } from "../geometry/types";
@@ -135,6 +136,16 @@ const SLAB_COLOR = {
 
 function SlabMesh({ s, dollhouse }: { s: RefSlab; dollhouse: boolean }) {
   const ref = useRef<THREE.Mesh>(null);
+  const geom = useMemo(() => {
+    if (!s.footprint || s.height == null) return null;
+    const { positions, indices } = prismGeometry(s.footprint, s.height);
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    g.setIndex(indices);
+    g.computeVertexNormals();
+    return g;
+  }, [s.footprint, s.height]);
+
   useFrame(({ camera }) => {
     const m = ref.current;
     if (!m) return;
@@ -147,14 +158,30 @@ function SlabMesh({ s, dollhouse }: { s: RefSlab; dollhouse: boolean }) {
             { x: camera.position.x, z: camera.position.z },
           );
   });
+
+  // prism (wall): geometry is in absolute world coords, mesh at origin
+  if (geom) {
+    return (
+      <mesh ref={ref} geometry={geom} renderOrder={-1}>
+        <meshStandardMaterial
+          color={SLAB_COLOR.wall}
+          transparent
+          opacity={0.16}
+          side={THREE.DoubleSide}
+        />
+      </mesh>
+    );
+  }
+
+  // box (baseboard)
   return (
     <mesh
       ref={ref}
       position={[s.center.x, s.center.y, s.center.z]}
-      rotation={[0, s.rotY, 0]}
+      rotation={[0, s.rotY ?? 0, 0]}
       renderOrder={-1}
     >
-      <boxGeometry args={[s.size.x, s.size.y, s.size.z]} />
+      <boxGeometry args={[s.size?.x ?? 0, s.size?.y ?? 0, s.size?.z ?? 0]} />
       <meshStandardMaterial
         color={SLAB_COLOR[s.kind]}
         transparent

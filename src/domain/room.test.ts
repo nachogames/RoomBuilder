@@ -21,13 +21,17 @@ describe("roomReferenceSlabs wall placement", () => {
       walls: rectWalls(100, 80), // centroid at origin; top edge at z=-40
       baseboard: null,
     };
-    const slabs = roomReferenceSlabs(room);
-    const top = slabs.find((s) => s.id === "w0")!;
-    // top edge polygon line is z = -40; interior is z > -40.
-    // wall thickness 4.5 must sit entirely outside (z < -40):
-    expect(top.center.z).toBeCloseTo(-40 - 4.5 / 2, 6);
-    // inner face (toward interior) lands exactly on the line
-    expect(top.center.z + top.size.z / 2).toBeCloseTo(-40, 6);
+    const top = roomReferenceSlabs(room).find((s) => s.id === "w0")!;
+    const fp = top.footprint!;
+    // inner edge (first two points) is on the polygon line z = -40
+    expect(fp[0].z).toBeCloseTo(-40, 6);
+    expect(fp[1].z).toBeCloseTo(-40, 6);
+    // every footprint point is on or outside the line (z <= -40)
+    for (const p of fp) expect(p.z).toBeLessThanOrEqual(-40 + 1e-9);
+    // outer edge sits one thickness out
+    expect(Math.min(...fp.map((p) => p.z))).toBeCloseTo(-40 - 4.5, 6);
+    // extruded full height
+    expect(top.height).toBe(96);
   });
 
   it("keeps every wall slab OUTSIDE the room, even around a notch", () => {

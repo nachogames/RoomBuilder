@@ -4,14 +4,64 @@ export interface RefSlab {
   id: string;
   kind: "wall" | "baseboard";
   center: { x: number; y: number; z: number };
-  size: { x: number; y: number; z: number };
-  /** rotation about the Y (up) axis, radians */
-  rotY: number;
+  /** box form (baseboards): size + rotation about Y */
+  size?: { x: number; y: number; z: number };
+  rotY?: number;
+  /** prism form (walls): footprint quad (x/z) extruded to `height` */
+  footprint?: Pt[];
+  height?: number;
   /** outward (away from room) unit normal in x/z, for dollhouse culling */
   normal?: { x: number; z: number };
 }
 
 const dist = (a: Pt, b: Pt) => Math.hypot(b.x - a.x, b.z - a.z);
+
+/** Outward (away-from-interior) unit normal of each polygon edge i
+ *  (walls[i] → walls[i+1]). Uses pointInRoom so it's correct for any shape. */
+function edgeOutwardNormals(walls: Pt[]): Pt[] {
+  const n = walls.length;
+  return walls.map((a, i) => {
+    const b = walls[(i + 1) % n];
+    const len = dist(a, b) || 1;
+    let nx = -(b.z - a.z) / len;
+    let nz = (b.x - a.x) / len;
+    const mx = (a.x + b.x) / 2;
+    const mz = (a.z + b.z) / 2;
+    if (pointInRoom(walls, mx + nx * 0.1, mz + nz * 0.1)) {
+      nx = -nx; // that side is inside → flip to outward
+      nz = -nz;
+    }
+    return { x: nx, z: nz };
+  });
+}
+
+/** Intersection of line (A1 + s·r) and (A2 + u·s2); null if parallel. */
+function lineIntersect(A1: Pt, r: Pt, A2: Pt, s2: Pt): Pt | null {
+  const denom = r.x * s2.z - r.z * s2.x;
+  if (Math.abs(denom) < 1e-9) return null;
+  const t1 = ((A2.x - A1.x) * s2.z - (A2.z - A1.z) * s2.x) / denom;
+  return { x: A1.x + t1 * r.x, z: A1.z + t1 * r.z };
+}
+
+/** The interior wall polygon offset OUTWARD by `t`, with mitered corners.
+ *  Returns one outer vertex per input vertex (aligned by index). */
+export function outerWallVertices(walls: Pt[], t: number): Pt[] {
+  const n = walls.length;
+  const o = edgeOutwardNormals(walls);
+  const out: Pt[] = [];
+  for (let i = 0; i < n; i++) {
+    const eIn = (i - 1 + n) % n; // edge ending at vertex i
+    const P = walls[i];
+    const prev = walls[eIn];
+    const next = walls[(i + 1) % n];
+    const dIn = { x: P.x - prev.x, z: P.z - prev.z };
+    const dOut = { x: next.x - P.x, z: next.z - P.z };
+    const A1 = { x: P.x + o[eIn].x * t, z: P.z + o[eIn].z * t };
+    const A2 = { x: P.x + o[i].x * t, z: P.z + o[i].z * t };
+    out.push(lineIntersect(A1, dIn, A2, dOut) ?? A2);
+  }
+  return out;
+}
 
 /** Closed-polygon edges as [from, to] pairs. */
 export function wallEdges(walls: Pt[]): Array<[Pt, Pt]> {
@@ -215,46 +265,46 @@ export function pointInRoom(walls: Pt[], px: number, pz: number): boolean {
 export function roomReferenceSlabs(room: Room): RefSlab[] {
   const { ceilingHeight: H, wallThickness: t } = room;
   const out: RefSlab[] = [];
+  const walls = room.walls;
+  const n = walls.length;
+  const outward = edgeOutwardNormals(walls);
+  // outer wall boundary: interior polygon mitered outward by the wall thickness
+  const outer = outerWallVertices(walls, t);
 
-  wallEdges(room.walls).forEach(([a, b], i) => {
+  walls.forEach((a, i) => {
+    const b = walls[(i + 1) % n];
     const len = dist(a, b);
     if (len < 1e-6) return;
-    const mx = (a.x + b.x) / 2;
-    const mz = (a.z + b.z) / 2;
-    const ang = Math.atan2(b.z - a.z, b.x - a.x);
 
-    // inward unit normal: pick the side that is actually inside the polygon.
-    // (Centroid won't do for non-convex shapes like a notch.)
-    let nx = -(b.z - a.z) / len;
-    let nz = (b.x - a.x) / len;
-    if (!pointInRoom(room.walls, mx + nx * 0.1, mz + nz * 0.1)) {
-      nx = -nx;
-      nz = -nz;
-    }
-
-    // The polygon edge is the room's INTERIOR face, so the wall sits entirely
-    // OUTSIDE it: shift the slab outward (−normal) by half its thickness.
-    const outward = { x: -nx, z: -nz };
+    // Wall = quad between the interior edge (a→b) and the mitered outer edge.
+    // No length padding, so corners meet cleanly with no overhang/overlap.
+    const fp: Pt[] = [a, b, outer[(i + 1) % n], outer[i]];
+    const cx = (fp[0].x + fp[1].x + fp[2].x + fp[3].x) / 4;
+    const cz = (fp[0].z + fp[1].z + fp[2].z + fp[3].z) / 4;
     out.push({
       id: `w${i}`,
       kind: "wall",
-      center: { x: mx - nx * (t / 2), y: H / 2, z: mz - nz * (t / 2) },
-      size: { x: len + t, y: H, z: t },
-      rotY: -ang,
-      normal: outward,
+      center: { x: cx, y: H / 2, z: cz },
+      footprint: fp,
+      height: H,
+      normal: outward[i],
     });
 
     if (room.baseboard) {
       const { height: bh, thickness: bt } = room.baseboard;
-      // baseboard hugs the interior face (the polygon line), just inside it
-      const off = bt / 2;
+      const mx = (a.x + b.x) / 2;
+      const mz = (a.z + b.z) / 2;
+      const ang = Math.atan2(b.z - a.z, b.x - a.x);
+      const nx = -outward[i].x; // inward
+      const nz = -outward[i].z;
+      const off = bt / 2; // hug the interior face
       out.push({
         id: `bb${i}`,
         kind: "baseboard",
         center: { x: mx + nx * off, y: bh / 2, z: mz + nz * off },
         size: { x: len, y: bh, z: bt },
         rotY: -ang,
-        normal: outward,
+        normal: outward[i],
       });
     }
   });
