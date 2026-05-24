@@ -1,5 +1,16 @@
 import { describe, it, expect } from "vitest";
-import { wallFacesCamera } from "./dollhouse";
+import { wallFacesCamera, viewIsShallow } from "./dollhouse";
+
+describe("viewIsShallow", () => {
+  it("is active when looking level (cull walls)", () => {
+    expect(viewIsShallow(0)).toBe(true); // horizontal
+    expect(viewIsShallow(-0.3)).toBe(true); // ~17° down
+  });
+  it("is inactive when looking steeply down (leave walls)", () => {
+    expect(viewIsShallow(-1)).toBe(false); // straight down
+    expect(viewIsShallow(-0.9)).toBe(false); // steep
+  });
+});
 
 describe("wallFacesCamera", () => {
   // a wall whose exterior (outward normal) points +z, centred at z=0

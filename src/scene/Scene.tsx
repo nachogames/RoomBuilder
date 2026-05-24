@@ -7,7 +7,9 @@ import { buildCarcass } from "../geometry/carcass";
 import { buildRunner } from "../geometry/runner";
 import { frustumGeometry } from "./frustum";
 import { prismGeometry } from "./prism";
-import { wallFacesCamera } from "./dollhouse";
+import { wallFacesCamera, viewIsShallow } from "./dollhouse";
+
+const _dir = new THREE.Vector3();
 import { roomReferenceSlabs, type RefSlab } from "../domain/room";
 import type { Part, PartRole } from "../geometry/types";
 
@@ -149,14 +151,19 @@ function SlabMesh({ s, dollhouse }: { s: RefSlab; dollhouse: boolean }) {
   useFrame(({ camera }) => {
     const m = ref.current;
     if (!m) return;
+    if (!dollhouse || !s.normal) {
+      m.visible = true;
+      return;
+    }
+    camera.getWorldDirection(_dir);
+    // only cull when looking roughly level; from above, keep all walls up
     m.visible =
-      !dollhouse || !s.normal
-        ? true
-        : !wallFacesCamera(
-            s.normal,
-            { x: s.center.x, z: s.center.z },
-            { x: camera.position.x, z: camera.position.z },
-          );
+      !viewIsShallow(_dir.y) ||
+      !wallFacesCamera(
+        s.normal,
+        { x: s.center.x, z: s.center.z },
+        { x: camera.position.x, z: camera.position.z },
+      );
   });
 
   // prism (wall): geometry is in absolute world coords, mesh at origin
