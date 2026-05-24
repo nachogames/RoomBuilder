@@ -4,9 +4,45 @@ import {
   defaultProject,
   defaultBookcase,
   defaultCatalog,
+  defaultRunner,
+  uid,
   RUNNER_PROFILES,
 } from "./defaults";
 import { runnerLayout } from "../geometry/runner";
+
+describe("uid", () => {
+  it("never repeats, even across many calls", () => {
+    const ids = new Set(Array.from({ length: 2000 }, () => uid("carcass")));
+    expect(ids.size).toBe(2000);
+  });
+});
+
+describe("normalizeProject id de-duplication", () => {
+  it("re-ids colliding objects, keeps the first, preserves runner refs", () => {
+    // simulate the bug: a freshly added bookcase reused a desk cabinet's id
+    const cab = { ...defaultBookcase(), id: "carcass-x", label: "Desk cab" };
+    const book = {
+      ...defaultBookcase(),
+      id: "carcass-x",
+      label: "Bookcase",
+      position: { x: 0, z: 0 },
+    };
+    const runner = { ...defaultRunner(["carcass-x"]), id: "runner-y" };
+    const p = {
+      ...defaultProject(),
+      carcasses: [cab, book],
+      runners: [runner],
+      refBoxes: [],
+    };
+    const n = normalizeProject(p);
+    const ids = [...n.carcasses, ...n.runners, ...n.refBoxes].map((o) => o.id);
+    expect(new Set(ids).size).toBe(ids.length); // all unique
+    // first occurrence keeps its id; the runner still references it
+    expect(n.carcasses[0].id).toBe("carcass-x");
+    expect(n.carcasses[1].id).not.toBe("carcass-x");
+    expect(n.runners[0].spannedCarcassIds).toEqual(["carcass-x"]);
+  });
+});
 
 describe("normalizeProject carcass stacking defaults", () => {
   it("fills baseHeight=0 on legacy carcasses", () => {

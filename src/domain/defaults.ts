@@ -58,9 +58,16 @@ export function defaultCatalog(): StockCatalog {
 }
 
 let seq = 0;
+/** Collision-proof id. The random suffix matters because the counter resets on
+ *  page reload / HMR while ids persist in saved projects — a bare counter would
+ *  replay low numbers and collide with existing ids. */
 export function uid(prefix = "id"): string {
   seq += 1;
-  return `${prefix}-${seq}`;
+  const rand =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID().slice(0, 8)
+      : Math.random().toString(36).slice(2, 10);
+  return `${prefix}-${rand}-${seq}`;
 }
 
 export function defaultBookcase(): Carcass {
@@ -325,9 +332,32 @@ export function migrateRunner(
   };
 }
 
+/** Reassign any duplicate object ids (keeping the first occurrence) so a
+ *  reused id can't make two pieces move together. Runner refs point at the
+ *  first occurrence, so keeping it preserves desk grouping. */
+function dedupeIds(p: Project): Project {
+  const seen = new Set<string>();
+  const fix = <T extends { id: string }>(item: T, prefix: string): T => {
+    if (!seen.has(item.id)) {
+      seen.add(item.id);
+      return item;
+    }
+    let nid = uid(prefix);
+    while (seen.has(nid)) nid = uid(prefix);
+    seen.add(nid);
+    return { ...item, id: nid };
+  };
+  return {
+    ...p,
+    carcasses: p.carcasses.map((c) => fix(c, "carcass")),
+    runners: p.runners.map((r) => fix(r, "runner")),
+    refBoxes: p.refBoxes.map((b) => fix(b, "box")),
+  };
+}
+
 /** Fill in fields that older saved projects may lack. */
 export function normalizeProject(p: Project): Project {
-  return {
+  return dedupeIds({
     ...p,
     units: p.units ?? "in",
     room: {
@@ -354,5 +384,5 @@ export function normalizeProject(p: Project): Project {
       rotationDeg: b.rotationDeg ?? 0,
       baseHeight: b.baseHeight ?? 0,
     })),
-  };
+  });
 }
