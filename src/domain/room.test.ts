@@ -11,6 +11,26 @@ import {
 } from "./room";
 import { defaultProject, rectWalls } from "./defaults";
 
+describe("roomReferenceSlabs wall placement", () => {
+  it("puts the wall's inner face on the polygon line (wall sits outside)", () => {
+    const room = {
+      length: 100,
+      width: 80,
+      ceilingHeight: 96,
+      wallThickness: 4.5,
+      walls: rectWalls(100, 80), // centroid at origin; top edge at z=-40
+      baseboard: null,
+    };
+    const slabs = roomReferenceSlabs(room);
+    const top = slabs.find((s) => s.id === "w0")!;
+    // top edge polygon line is z = -40; interior is z > -40.
+    // wall thickness 4.5 must sit entirely outside (z < -40):
+    expect(top.center.z).toBeCloseTo(-40 - 4.5 / 2, 6);
+    // inner face (toward interior) lands exactly on the line
+    expect(top.center.z + top.size.z / 2).toBeCloseTo(-40, 6);
+  });
+});
+
 describe("polygon perimeter / baseboard length", () => {
   it("equals the rectangle perimeter for the default room", () => {
     const r = defaultProject().room; // 128 x 120

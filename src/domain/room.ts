@@ -221,24 +221,29 @@ export function roomReferenceSlabs(room: Room): RefSlab[] {
     const mx = (a.x + b.x) / 2;
     const mz = (a.z + b.z) / 2;
     const ang = Math.atan2(b.z - a.z, b.x - a.x);
+
+    // inward unit normal (toward centroid)
+    let nx = -(b.z - a.z) / len;
+    let nz = (b.x - a.x) / len;
+    if ((c.x - mx) * nx + (c.z - mz) * nz < 0) {
+      nx = -nx;
+      nz = -nz;
+    }
+
+    // The polygon edge is the room's INTERIOR face, so the wall sits entirely
+    // OUTSIDE it: shift the slab outward (−normal) by half its thickness.
     out.push({
       id: `w${i}`,
       kind: "wall",
-      center: { x: mx, y: H / 2, z: mz },
+      center: { x: mx - nx * (t / 2), y: H / 2, z: mz - nz * (t / 2) },
       size: { x: len + t, y: H, z: t },
       rotY: -ang,
     });
 
     if (room.baseboard) {
       const { height: bh, thickness: bt } = room.baseboard;
-      // inward unit normal (toward centroid)
-      let nx = -(b.z - a.z) / len;
-      let nz = (b.x - a.x) / len;
-      if ((c.x - mx) * nx + (c.z - mz) * nz < 0) {
-        nx = -nx;
-        nz = -nz;
-      }
-      const off = t / 2 + bt / 2;
+      // baseboard hugs the interior face (the polygon line), just inside it
+      const off = bt / 2;
       out.push({
         id: `bb${i}`,
         kind: "baseboard",
