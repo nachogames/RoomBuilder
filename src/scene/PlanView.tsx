@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import type { Project, Pt } from "../domain/types";
-import { groupAABB, translateGroup } from "../geometry/group";
+import { translateGroup } from "../geometry/group";
 import {
   baseboardLengthInches,
   centroid,
@@ -179,17 +179,13 @@ export function PlanView({
     } else if (drag.kind === "runner") {
       const r = project.runners.find((k) => k.id === drag.id);
       if (!r) return;
-      // desk group: clamp the union footprint (desktop incl. overhang + owned
-      // cabinets); whichever edge sticks out furthest is what the wall blocks.
+      // Constrain by the runner's OWN footprint (like a carcass) so it always
+      // drags — even a runner spanning far-apart cabinets. Owned cabinets
+      // follow via translateGroup; drag a cabinet alone to nudge it after.
       const tx = x + drag.dx;
       const tz = z + drag.dz;
-      const bb = groupAABB(r, project);
-      const w = bb.maxX - bb.minX;
-      const d = bb.maxZ - bb.minZ;
-      const ox = (bb.minX + bb.maxX) / 2 - r.position.x;
-      const oz = (bb.minZ + bb.maxZ) / 2 - r.position.z;
       const ok = (px: number, pz: number) =>
-        rectInsideRoom(walls, px + ox, pz + oz, w, d, 0);
+        rectInsideRoom(walls, px, pz, r.length, r.depth, r.rotationDeg);
       const p0 = r.position;
       const pos = ok(tx, tz)
         ? { x: tx, z: tz }
