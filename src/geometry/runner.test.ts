@@ -81,6 +81,38 @@ describe("buildRunner", () => {
     expect(g.parts.filter((p) => p.role === "support")).toHaveLength(1);
     expect(g.joints.some((j) => j.method === "bracket")).toBe(true);
   });
+
+  it("offsetFromCenterZ shifts a leg's local z (0 = centred, default)", () => {
+    const cs = twoBookcases();
+    const r = defaultRunner(["A", "B"]);
+    r.supports = [
+      { id: "s1", kind: "leg", offsetFromLeft: 30, offsetFromCenterZ: 4 },
+      { id: "s2", kind: "leg", offsetFromLeft: 30 }, // no Z field → centred
+    ];
+    const g = buildRunner(r, cs, defaultCatalog());
+    const legs = g.parts.filter((p) => p.role === "support");
+    const zs = legs.map((p) => p.center.z).sort((a, b) => a - b);
+    expect(zs).toEqual([0, 4]);
+  });
+
+  it("leg surfaceUnder is queried at the support's WORLD point (sx, sz rotated)", () => {
+    const cs = twoBookcases();
+    const r = defaultRunner(["A", "B"]);
+    r.position = { x: 100, z: 50 };
+    r.length = 60;
+    r.rotationDeg = 0;
+    r.baseHeight = 40;
+    r.supports = [{ id: "s", kind: "leg", offsetFromLeft: 10, offsetFromCenterZ: 6 }];
+    // sx (local) = -30 + 10 = -20 ; world (rot 0): (100 + -20, 50 + 6) = (80, 56)
+    const seen: Array<{ x: number; z: number; maxY: number }> = [];
+    buildRunner(r, cs, defaultCatalog(), {
+      surfaceUnder: (x, z, maxY) => {
+        seen.push({ x, z, maxY });
+        return 0;
+      },
+    });
+    expect(seen).toEqual([{ x: 80, z: 56, maxY: 40 }]);
+  });
 });
 
 describe("sag check", () => {

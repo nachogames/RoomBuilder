@@ -11,6 +11,7 @@ import {
   defaultBookcase,
   defaultRunner,
   defaultRefBox,
+  defaultPerson,
   deskAssembly,
   normalizeProject,
   rectWalls,
@@ -155,11 +156,21 @@ function Workspace({
   const fileRef = useRef<HTMLInputElement>(null);
 
   const selected = project.carcasses.find((c) => c.id === sel);
-  const selRunner =
-    project.runners.find(
-      (r) => r.id === sel || sel.startsWith(`sup:${r.id}:`),
-    ) ?? null;
+  // Runner inspector shows only when the runner itself is selected. When a
+  // support is selected (sel = `sup:rid:sid`) we render the dedicated support
+  // inspector instead, the same way other items get their own inspector.
+  const selRunner = project.runners.find((r) => r.id === sel) ?? null;
+  const selSupport = (() => {
+    if (!sel.startsWith("sup:")) return null;
+    const [, rid, sid] = sel.split(":");
+    const runner = project.runners.find((x) => x.id === rid);
+    if (!runner) return null;
+    const support = runner.supports.find((x) => x.id === sid);
+    if (!support) return null;
+    return { runner, support };
+  })();
   const selTote = project.refBoxes.find((b) => b.id === sel) ?? null;
+  const selPerson = project.people.find((p) => p.id === sel) ?? null;
   const toggle = (k: string) =>
     setCollapse((c) => ({ ...c, [k]: !c[k] }));
 
@@ -311,6 +322,12 @@ function Workspace({
     const b = { ...defaultRefBox(), position: roomInteriorPoint(project.room.walls) };
     setProject((p) => ({ ...p, refBoxes: [...p.refBoxes, b] }));
     setSelId(b.id);
+  }
+
+  function addPerson() {
+    const pn = { ...defaultPerson(), position: roomInteriorPoint(project.room.walls) };
+    setProject((p) => ({ ...p, people: [...p.people, pn] }));
+    setSelId(pn.id);
   }
 
   const overall = worstLevel(checks);
@@ -489,6 +506,26 @@ function Workspace({
                     onClick={() => setSel(b.id)}
                   >
                     ▢ {b.label}
+                  </button>
+                ))}
+            </div>
+
+            <div className="tree-group">
+              <div className="tree-head">
+                <button onClick={() => toggle("people")}>
+                  {collapse.people ? "▸" : "▾"} People (
+                  {project.people.length})
+                </button>
+                <button onClick={addPerson}>+ Person</button>
+              </div>
+              {!collapse.people &&
+                project.people.map((pn) => (
+                  <button
+                    key={pn.id}
+                    className={`tree-row ${sel === pn.id ? "on" : ""}`}
+                    onClick={() => setSel(pn.id)}
+                  >
+                    ☻ {pn.label}
                   </button>
                 ))}
             </div>
@@ -832,61 +869,25 @@ function Workspace({
                   {r.supports.length}
                 </span>
                 <button
-                  onClick={() =>
-                    patchRunner(r.id, {
-                      supports: [
-                        ...r.supports,
-                        {
-                          id: uid("sup"),
-                          kind: "leg",
-                          offsetFromLeft: 24,
-                        },
-                      ],
-                    })
-                  }
+                  title="Add a support and open its inspector"
+                  onClick={() => {
+                    const sup = {
+                      id: uid("sup"),
+                      kind: "leg" as SupportKind,
+                      offsetFromLeft: 24,
+                    };
+                    patchRunner(r.id, { supports: [...r.supports, sup] });
+                    setSelId(`sup:${r.id}:${sup.id}`);
+                  }}
                 >
                   + Support
                 </button>
               </div>
-              {r.supports.map((s, i) => (
-                <div key={s.id} className="row">
-                  <select
-                    value={s.kind}
-                    onChange={(e) =>
-                      patchRunner(r.id, {
-                        supports: r.supports.map((x) =>
-                          x.id === s.id
-                            ? {
-                                ...x,
-                                kind: e.target.value as SupportKind,
-                              }
-                            : x,
-                        ),
-                      })
-                    }
-                  >
-                    {SUPPORT_KINDS.map((k) => (
-                      <option key={k} value={k}>
-                        {k}
-                      </option>
-                    ))}
-                  </select>
-                  <DimField
-                    label={`#${i + 1} @`}
-                    value={s.offsetFromLeft}
-                    allowZero
-                    onChange={(v) =>
-                      patchRunner(r.id, {
-                        supports: r.supports.map((x) =>
-                          x.id === s.id
-                            ? { ...x, offsetFromLeft: v }
-                            : x,
-                        ),
-                      })
-                    }
-                  />
-                </div>
-              ))}
+              {r.supports.length > 0 && (
+                <p className="label" style={{ marginTop: 2 }}>
+                  Click a support in the tree to edit it.
+                </p>
+              )}
               <button
                 title="Size & centre this runner to span across its cabinets, resting on top"
                 onClick={() =>
@@ -978,7 +979,137 @@ function Workspace({
               </button>
             </div>
           ))}
-          {sel !== "room" && !selected && !selRunner && !selTote && (
+
+          {(selPerson ? [selPerson] : []).map((pn) => (
+            <div key={pn.id} className="sub">
+              <h3>{pn.label}</h3>
+              <input
+                className="proj-name"
+                style={{ width: "100%" }}
+                value={pn.label}
+                onChange={(e) =>
+                  setProject((p) => ({
+                    ...p,
+                    people: p.people.map((x) =>
+                      x.id === pn.id ? { ...x, label: e.target.value } : x,
+                    ),
+                  }))
+                }
+              />
+              <SelectField
+                label="Pose"
+                value={pn.pose}
+                options={["standing", "sitting"] as const}
+                onChange={(v) =>
+                  setProject((p) => ({
+                    ...p,
+                    people: p.people.map((x) =>
+                      x.id === pn.id ? { ...x, pose: v } : x,
+                    ),
+                  }))
+                }
+              />
+              <DimField
+                label="Height"
+                value={pn.height}
+                onChange={(v) =>
+                  setProject((p) => ({
+                    ...p,
+                    people: p.people.map((x) =>
+                      x.id === pn.id ? { ...x, height: v } : x,
+                    ),
+                  }))
+                }
+              />
+              <PlacementFields
+                obj={pn}
+                onPatch={(patch) =>
+                  setProject((p) => ({
+                    ...p,
+                    people: p.people.map((x) =>
+                      x.id === pn.id ? { ...x, ...patch } : x,
+                    ),
+                  }))
+                }
+                onSnap={() =>
+                  setProject((p) => ({
+                    ...p,
+                    people: p.people.map((x) =>
+                      x.id === pn.id
+                        ? { ...x, baseHeight: snapHeight(x, p) }
+                        : x,
+                    ),
+                  }))
+                }
+              />
+              <button
+                onClick={() =>
+                  setProject((p) => ({
+                    ...p,
+                    people: p.people.filter((x) => x.id !== pn.id),
+                  }))
+                }
+              >
+                Delete person
+              </button>
+            </div>
+          ))}
+
+          {selSupport && (() => {
+            const { runner: rr, support: ss } = selSupport;
+            const i = rr.supports.findIndex((x) => x.id === ss.id);
+            const patchSupport = (patch: Partial<typeof ss>) =>
+              patchRunner(rr.id, {
+                supports: rr.supports.map((x) =>
+                  x.id === ss.id ? { ...x, ...patch } : x,
+                ),
+              });
+            return (
+              <div className="sub">
+                <h3>
+                  {ss.kind} #{i + 1}
+                </h3>
+                <p className="label" style={{ marginTop: 0 }}>
+                  on{" "}
+                  <button
+                    className="link"
+                    onClick={() => setSelId(rr.id)}
+                    title="Open the parent runner"
+                  >
+                    {rr.label}
+                  </button>
+                </p>
+                <SelectField
+                  label="Kind"
+                  value={ss.kind}
+                  options={SUPPORT_KINDS}
+                  onChange={(v) => patchSupport({ kind: v })}
+                />
+                <StepField
+                  label="X (from left)"
+                  value={ss.offsetFromLeft}
+                  onChange={(v) => patchSupport({ offsetFromLeft: v })}
+                />
+                <StepField
+                  label="Z (from centre)"
+                  value={ss.offsetFromCenterZ ?? 0}
+                  onChange={(v) => patchSupport({ offsetFromCenterZ: v })}
+                />
+                <button
+                  onClick={() => {
+                    patchRunner(rr.id, {
+                      supports: rr.supports.filter((x) => x.id !== ss.id),
+                    });
+                    setSelId(rr.id);
+                  }}
+                >
+                  Delete support
+                </button>
+              </div>
+            );
+          })()}
+
+          {sel !== "room" && !selected && !selRunner && !selTote && !selPerson && !selSupport && (
             <p className="label">Select an item above to edit it.</p>
           )}
           </div>

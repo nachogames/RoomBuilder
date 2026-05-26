@@ -120,6 +120,9 @@ export interface Support {
   kind: SupportKind;
   /** position along the runner, inches from the runner's left end */
   offsetFromLeft: Inches;
+  /** offset along the runner's depth axis from its centreline; positive moves
+   *  the support toward the runner's front (+Z), default 0 = centred */
+  offsetFromCenterZ?: Inches;
 }
 
 export type RunnerFastening = Extract<
@@ -168,6 +171,18 @@ export interface RefBox {
   baseHeight?: Inches;
 }
 
+/** A reference human figure for scale, posable as standing or seated. */
+export interface Person {
+  id: string;
+  label: string;
+  position: { x: Inches; z: Inches };
+  rotationDeg: number;
+  baseHeight?: Inches;
+  pose: "standing" | "sitting";
+  /** standing head-top height; sitting head-top is derived from this. */
+  height: Inches;
+}
+
 export type Units = "in" | "mm";
 
 export interface Project {
@@ -179,4 +194,5 @@ export interface Project {
   carcasses: Carcass[];
   runners: Runner[];
   refBoxes: RefBox[];
+  people: Person[];
 }

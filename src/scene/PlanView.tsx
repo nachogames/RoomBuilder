@@ -12,6 +12,7 @@ import {
   wallEdges,
 } from "../domain/room";
 import { useUnits } from "../ui/units";
+import { personFootprint } from "../domain/person";
 
 type Drag =
   | { kind: "corner"; index: number }
@@ -26,7 +27,7 @@ type Drag =
       base: Pt[]; // wall snapshot at drag start
       spawn: boolean; // straight run -> spawn jut; jut face -> translate
     }
-  | { kind: "carcass" | "box" | "runner"; id: string; dx: number; dz: number }
+  | { kind: "carcass" | "box" | "runner" | "person"; id: string; dx: number; dz: number }
   | null;
 
 /** Snap to a clean 1/4" so freehand wall edits land square. */
@@ -184,7 +185,7 @@ export function PlanView({
       // If the shelf fits inside a bookcase it overlaps, clamp to that
       // bookcase's interior (sides + back, front open); else use room walls.
       const container = findContainer(
-        { id: r.id, w: r.length, d: r.depth, cx: tx, cz: tz, excludeIds: r.spannedCarcassIds },
+        { id: r.id, w: r.length, d: r.depth, cx: tx, cz: tz, rotationDeg: r.rotationDeg, prevPos: p0, excludeIds: r.spannedCarcassIds },
         project,
       );
       const ok = (px: number, pz: number) =>
@@ -192,7 +193,7 @@ export function PlanView({
       // Wall-slide when a respecting position exists, but NEVER freeze: a long
       // shelf that can't fit any in-room position still follows the cursor.
       const pos = container
-        ? clampToInterior(container, r.length, r.depth, tx, tz, project)
+        ? clampToInterior(container, r.length, r.depth, tx, tz, project, r.rotationDeg)
         : resolveMove(ok, tx, tz, p0, true);
       if (r.groupDrag && !container) {
         // desk top: carry the spanned cabinets along
@@ -213,7 +214,7 @@ export function PlanView({
           ),
         }));
       }
-    } else {
+    } else if (drag.kind === "box") {
       const bx = project.refBoxes.find((k) => k.id === drag.id);
       if (!bx) return;
       const tx = x + drag.dx;
@@ -224,18 +225,36 @@ export function PlanView({
       const bd = Math.max(bx.depth, bx.topDepth ?? bx.depth);
       const p0 = bx.position;
       const container = findContainer(
-        { id: bx.id, w: bw, d: bd, cx: tx, cz: tz },
+        { id: bx.id, w: bw, d: bd, cx: tx, cz: tz, rotationDeg: bx.rotationDeg, prevPos: p0 },
         project,
       );
       const ok = (px: number, pz: number) =>
         rectInsideRoom(walls, px, pz, bw, bd, bx.rotationDeg);
       const pos = container
-        ? clampToInterior(container, bw, bd, tx, tz, project)
+        ? clampToInterior(container, bw, bd, tx, tz, project, bx.rotationDeg)
         : resolveMove(ok, tx, tz, p0, false);
       if (pos === p0) return;
       setProject((pr) => ({
         ...pr,
         refBoxes: pr.refBoxes.map((k) =>
+          k.id === drag.id ? { ...k, position: pos } : k,
+        ),
+      }));
+    } else {
+      // person
+      const pn = project.people.find((k) => k.id === drag.id);
+      if (!pn) return;
+      const tx = x + drag.dx;
+      const tz = z + drag.dz;
+      const fp = personFootprint(pn);
+      const p0 = pn.position;
+      const ok = (px: number, pz: number) =>
+        rectInsideRoom(walls, px, pz, fp.width, fp.depth, pn.rotationDeg);
+      const pos = resolveMove(ok, tx, tz, p0, false);
+      if (pos === p0) return;
+      setProject((pr) => ({
+        ...pr,
+        people: pr.people.map((k) =>
           k.id === drag.id ? { ...k, position: pos } : k,
         ),
       }));
@@ -464,14 +483,36 @@ export function PlanView({
                 });
               }}
             >
+              {/* body fill */}
               <rect
                 x={cc.position.x - cc.width / 2}
                 y={cc.position.z - cc.depth / 2}
                 width={cc.width}
                 height={cc.depth}
                 fill="#c8a87766"
+              />
+              {/* U-outline: solid back + two sides; open front (local +Z =
+                  bottom edge of this un-rotated path) drawn as a dashed line
+                  so you can see which side of the cabinet is open. */}
+              <path
+                d={`M ${cc.position.x - cc.width / 2} ${cc.position.z + cc.depth / 2}
+                    L ${cc.position.x - cc.width / 2} ${cc.position.z - cc.depth / 2}
+                    L ${cc.position.x + cc.width / 2} ${cc.position.z - cc.depth / 2}
+                    L ${cc.position.x + cc.width / 2} ${cc.position.z + cc.depth / 2}`}
+                fill="none"
                 stroke="#e3cda0"
                 strokeWidth={S}
+                strokeLinejoin="round"
+              />
+              <line
+                x1={cc.position.x - cc.width / 2}
+                y1={cc.position.z + cc.depth / 2}
+                x2={cc.position.x + cc.width / 2}
+                y2={cc.position.z + cc.depth / 2}
+                stroke="#e3cda0"
+                strokeOpacity={0.5}
+                strokeWidth={S}
+                strokeDasharray={`${S * 2} ${S * 1.5}`}
               />
               <text
                 x={cc.position.x}
@@ -603,6 +644,66 @@ export function PlanView({
             </text>
           </g>
         ))}
+
+        {/* people — oval footprint with a tick on the +Z side (facing forward) */}
+        {project.people.map((pn) => {
+          const fp = personFootprint(pn);
+          const color = "#8aa0a8"; // muted cool gray
+          return (
+            <g
+              key={pn.id}
+              transform={`rotate(${pn.rotationDeg} ${pn.position.x} ${pn.position.z})`}
+              style={{ cursor: "grab" }}
+              onPointerDown={(e) => {
+                (e.target as Element).setPointerCapture?.(e.pointerId);
+                onSelect(pn.id);
+                const rp = toRoom(e);
+                setDrag({
+                  kind: "person",
+                  id: pn.id,
+                  dx: rp ? pn.position.x - rp.x : 0,
+                  dz: rp ? pn.position.z - rp.z : 0,
+                });
+              }}
+            >
+              <ellipse
+                cx={pn.position.x}
+                cy={pn.position.z}
+                rx={fp.width / 2}
+                ry={fp.depth / 2}
+                fill={`${color}55`}
+                stroke={color}
+                strokeWidth={S}
+              />
+              {/* small triangle on the +Z (front) side to show facing direction */}
+              {(() => {
+                const cx = pn.position.x;
+                const cz = pn.position.z;
+                const tip = fp.depth / 2 + fontPx * 0.6;
+                const base = fp.depth / 2 - fontPx * 0.1;
+                const half = fontPx * 0.5;
+                return (
+                  <polygon
+                    points={`${cx},${cz + tip} ${cx - half},${cz + base} ${cx + half},${cz + base}`}
+                    fill={color}
+                    pointerEvents="none"
+                  />
+                );
+              })()}
+              <text
+                x={pn.position.x}
+                y={pn.position.z}
+                fill="#fff"
+                fontSize={fontPx * 0.85}
+                textAnchor="middle"
+                dominantBaseline="middle"
+                pointerEvents="none"
+              >
+                {pn.pose === "sitting" ? "Sit" : "Stand"}
+              </text>
+            </g>
+          );
+        })}
 
         {/* wall dimensions + add-corner handles */}
         {wallEdges(walls).map(([a, b], i) => {

@@ -1,6 +1,7 @@
 import type { Project } from "../domain/types";
 import { buildCarcass } from "./carcass";
 import { buildRunner } from "./runner";
+import { surfaceUnderPoint } from "./stacking";
 import type { CarcassGeometry } from "./types";
 
 export * from "./types";
@@ -16,7 +17,11 @@ export function buildProject(project: Project): CarcassGeometry {
     all.joints.push(...g.joints);
   }
   for (const r of project.runners) {
-    const g = buildRunner(r, project.carcasses, project.catalog);
+    const g = buildRunner(r, project.carcasses, project.catalog, {
+      // legs auto-span from the runner's underside down to whatever's below
+      surfaceUnder: (x, z, maxY) =>
+        surfaceUnderPoint(x, z, maxY, project, r.id),
+    });
     all.parts.push(...g.parts);
     all.joints.push(...g.joints);
   }

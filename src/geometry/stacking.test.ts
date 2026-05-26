@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { objectTop, snapHeight } from "./stacking";
+import { objectTop, snapHeight, surfaceUnderPoint } from "./stacking";
 import {
   defaultBookcase,
   defaultRunner,
@@ -63,6 +63,34 @@ describe("snapHeight — surfaces at or below current Y", () => {
     };
     expect(snapHeight(tote, projectWith([cab], [], [tote]))).toBeCloseTo(
       44.5,
+      6,
+    );
+  });
+
+  it("snaps to the bookcase's cavity floor (above the toe kick) when nothing else is below", () => {
+    // toeKick 3 + 0.75" carcass bottom = cavity floor at 3.75 ; the only shelf
+    // is at offsetFromBottom 30 → shelf top 34.5, well above Pos Y. The cavity
+    // floor is now the highest surface ≤ Pos Y.
+    const cab: Carcass = {
+      ...defaultBookcase(),
+      id: "CAB",
+      position: { x: 0, z: 0 },
+      width: 30,
+      depth: 12,
+      height: 72,
+      toeKickHeight: 3,
+      shelves: [{ offsetFromBottom: 30, attachment: "pocket-screw" }],
+    };
+    const runner = {
+      ...defaultRunner([]),
+      id: "R",
+      position: { x: 0, z: 0 },
+      length: 20,
+      depth: 10,
+      baseHeight: 10,
+    };
+    expect(snapHeight(runner, projectWith([cab], [runner]))).toBeCloseTo(
+      3.75,
       6,
     );
   });
@@ -168,5 +196,94 @@ describe("snapHeight — surfaces at or below current Y", () => {
       baseHeight: 10,
     };
     expect(snapHeight(cab, projectWith([cab]))).toBe(0);
+  });
+});
+
+describe("surfaceUnderPoint — highest surface ≤ maxY at a world (x,z) point", () => {
+  it("returns 0 (floor) when nothing overlaps the point", () => {
+    const cab: Carcass = {
+      ...defaultBookcase(),
+      id: "C",
+      position: { x: 0, z: 0 },
+      width: 30,
+      depth: 12,
+      height: 72,
+      shelves: [],
+    };
+    // point (100, 100) is well outside the cabinet footprint
+    expect(surfaceUnderPoint(100, 100, 100, projectWith([cab]))).toBe(0);
+  });
+
+  it("returns the desktop's top surface when a runner sits below the point", () => {
+    // desktop runner at baseHeight 28.5, ply-1.5 board → top surface 30
+    const desktop = {
+      ...defaultRunner([]),
+      id: "DT",
+      boardMaterialId: "ply-1.5",
+      position: { x: 0, z: 0 },
+      length: 70,
+      depth: 24,
+      baseHeight: 28.5,
+    };
+    // point at origin, maxY 60 (a shelf above) → top of desk = 30
+    expect(
+      surfaceUnderPoint(0, 0, 60, projectWith([], [desktop])),
+    ).toBeCloseTo(30, 6);
+  });
+
+  it("excludes the optional excludeId so a runner doesn't see itself", () => {
+    const desktop = {
+      ...defaultRunner([]),
+      id: "DT",
+      boardMaterialId: "ply-1.5",
+      position: { x: 0, z: 0 },
+      length: 70,
+      depth: 24,
+      baseHeight: 28.5,
+    };
+    // excluding DT: no other surface at this point → 0
+    expect(
+      surfaceUnderPoint(0, 0, 60, projectWith([], [desktop]), "DT"),
+    ).toBe(0);
+  });
+
+  it("picks the HIGHEST surface ≤ maxY when multiple stack up", () => {
+    const desktop = {
+      ...defaultRunner([]),
+      id: "DT",
+      boardMaterialId: "ply-1.5",
+      position: { x: 0, z: 0 },
+      length: 70,
+      depth: 24,
+      baseHeight: 28.5, // top 30
+    };
+    const cab: Carcass = {
+      ...defaultBookcase(),
+      id: "C",
+      position: { x: 0, z: 0 },
+      width: 30,
+      depth: 12,
+      height: 18,
+      baseHeight: 0,
+      shelves: [],
+      // cabinet top at 18 < 30 (desktop top) — desktop wins
+    };
+    expect(
+      surfaceUnderPoint(0, 0, 60, projectWith([cab], [desktop])),
+    ).toBeCloseTo(30, 6);
+  });
+
+  it("ignores surfaces above maxY (a leg only sees surfaces below the runner's underside)", () => {
+    const desktop = {
+      ...defaultRunner([]),
+      id: "DT",
+      boardMaterialId: "ply-1.5",
+      position: { x: 0, z: 0 },
+      length: 70,
+      depth: 24,
+      baseHeight: 50, // top 51.5
+    };
+    // maxY 30 < desktop top 51.5 → not a candidate → falls back to 0
+    expect(surfaceUnderPoint(0, 0, 30, projectWith([], [desktop]))).toBe(0);
   });
 });

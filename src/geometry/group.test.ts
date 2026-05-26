@@ -43,7 +43,7 @@ describe("groupAABB", () => {
 });
 
 describe("fitRunnerToCarcasses", () => {
-  it("spans the owned cabinets, centred, resting on top", () => {
+  it("a shelf runs INSIDE the outermost cabinets, ending on their far inside walls, and preserves baseHeight", () => {
     const a: Carcass = {
       ...defaultBookcase(),
       id: "A",
@@ -60,24 +60,81 @@ describe("fitRunnerToCarcasses", () => {
       baseHeight: 0,
       position: { x: 50, z: 4 },
     };
-    // a shelf (groupDrag false) spans the GAP between the cabinets:
-    // left cab right edge -39.625 .. right cab left edge 39.625 → length 79.25
-    const r = { ...defaultRunner(["A", "B"]), id: "R", groupDrag: false };
+    // long board through both cabinets: inside-left of A (= -50 -10.375 + 0.75
+    // = -59.625) to inside-right of B (= 50 + 10.375 - 0.75 = +59.625)
+    // → length 119.25 ; centred at 0
+    const r = { ...defaultRunner(["A", "B"]), id: "R", groupDrag: false, baseHeight: 18 };
     const p = { ...defaultProject(), carcasses: [a, b], runners: [r] };
     const patch = fitRunnerToCarcasses(r, p);
-    expect(patch.length).toBeCloseTo(79.25, 6);
+    expect(patch.length).toBeCloseTo(119.25, 6);
     expect(patch.position!.x).toBeCloseTo(0, 6);
     expect(patch.position!.z).toBeCloseTo(4, 6);
-    expect(patch.baseHeight).toBeCloseTo(30, 6); // top of the cabinets
+    // shelf vertical position is the user's job — Span must not touch it
+    expect(patch.baseHeight).toBeUndefined();
   });
 
-  it("a desk top (groupDrag) covers the cabinets to their outer edges", () => {
+  it("a desk top (groupDrag) covers the cabinets to their outer edges and rests on top", () => {
     const a: Carcass = { ...defaultBookcase(), id: "A", width: 20.75, height: 30, baseHeight: 0, position: { x: -50, z: 0 } };
     const b: Carcass = { ...defaultBookcase(), id: "B", width: 20.75, height: 30, baseHeight: 0, position: { x: 50, z: 0 } };
     const r = { ...defaultRunner(["A", "B"]), id: "R", groupDrag: true };
     const p = { ...defaultProject(), carcasses: [a, b], runners: [r] };
+    const patch = fitRunnerToCarcasses(r, p);
     // outer extent: -60.375 .. 60.375 → length 120.75
-    expect(fitRunnerToCarcasses(r, p).length).toBeCloseTo(120.75, 6);
+    expect(patch.length).toBeCloseTo(120.75, 6);
+    // desk top rests on the cabinets
+    expect(patch.baseHeight).toBeCloseTo(30, 6);
+  });
+
+  it("two bookcases turned 90° to face each other → shelf ends at each back-panel inside face", () => {
+    // back panels flush to a 128.5" room's two ends; bookcase depth 11.25, so
+    // cx = depth/2 = 5.625 on the left, 128.5 − 5.625 = 122.875 on the right.
+    // Default back is PLY_25 (1/4"); length = 128.5 − 2·0.25 = 128.
+    const left: Carcass = {
+      ...defaultBookcase(),
+      id: "L",
+      width: 20.75,
+      depth: 11.25,
+      height: 72,
+      baseHeight: 0,
+      position: { x: 5.625, z: 50 },
+      rotationDeg: 270, // back faces world −x (toward room's left wall)
+    };
+    const right: Carcass = {
+      ...defaultBookcase(),
+      id: "R",
+      width: 20.75,
+      depth: 11.25,
+      height: 72,
+      baseHeight: 0,
+      position: { x: 122.875, z: 50 },
+      rotationDeg: 90, // back faces world +x (toward room's right wall)
+    };
+    const r = { ...defaultRunner(["L", "R"]), id: "R0", groupDrag: false };
+    const p = { ...defaultProject(), carcasses: [left, right], runners: [r] };
+    const patch = fitRunnerToCarcasses(r, p);
+    expect(patch.length).toBeCloseTo(128, 6);
+    expect(patch.position!.x).toBeCloseTo(64.25, 6);
+  });
+
+  it("a single-cabinet shelf fits the interior width and keeps its baseHeight", () => {
+    // 'put the board inside the cabinet, resting on a shelf' — Span should
+    // size the board wall-to-wall inside the cavity without dragging the
+    // vertical position back to the cabinet top.
+    const a: Carcass = {
+      ...defaultBookcase(),
+      id: "A",
+      width: 20.75,
+      height: 72,
+      baseHeight: 0,
+      position: { x: 0, z: 0 },
+    };
+    // baseHeight 24.5 = "resting on a shelf at offsetFromBottom 20" (3 + 0.75 + 20 + 0.75)
+    const r = { ...defaultRunner(["A"]), id: "R", groupDrag: false, baseHeight: 24.5 };
+    const p = { ...defaultProject(), carcasses: [a], runners: [r] };
+    const patch = fitRunnerToCarcasses(r, p);
+    // interior width = 20.75 − 2·0.75 = 19.25 ; ends touch the inner side walls
+    expect(patch.length).toBeCloseTo(19.25, 6);
+    expect(patch.baseHeight).toBeUndefined();
   });
 
   it("returns {} with no owned cabinets", () => {

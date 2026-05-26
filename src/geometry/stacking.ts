@@ -1,6 +1,7 @@
 import type { Project } from "../domain/types";
 import { materialThickness } from "./types";
 import { rectAABB, type AABB } from "./group";
+import { personFootprint, personTopY } from "../domain/person";
 
 type Placed = { id: string };
 
@@ -36,6 +37,17 @@ function footprint(
       d: b.depth,
       deg: b.rotationDeg,
     };
+  const pn = project.people.find((x) => x.id === obj.id);
+  if (pn) {
+    const fp = personFootprint(pn);
+    return {
+      cx: pn.position.x,
+      cz: pn.position.z,
+      w: fp.width,
+      d: fp.depth,
+      deg: pn.rotationDeg,
+    };
+  }
   return null;
 }
 
@@ -51,6 +63,8 @@ export function objectTop(obj: Placed, project: Project): number {
   if (c) return (c.baseHeight ?? 0) + c.height;
   const b = project.refBoxes.find((x) => x.id === obj.id);
   if (b) return (b.baseHeight ?? 0) + b.height;
+  const pn = project.people.find((x) => x.id === obj.id);
+  if (pn) return (pn.baseHeight ?? 0) + personTopY(pn);
   return 0;
 }
 
@@ -90,6 +104,9 @@ function gatherSurfaces(target: Placed, project: Project): Surface[] {
       c.shelfMaterialId,
     );
     const interior = c.toeKickHeight + carcassT;
+    // cavity floor (top of the bottom panel, above the toe kick) so a runner
+    // or tote placed inside an empty cabinet can snap to the floor too.
+    out.push({ top: (c.baseHeight ?? 0) + interior, foot });
     for (const sh of c.shelves) {
       out.push({
         top: (c.baseHeight ?? 0) + interior + sh.offsetFromBottom + shelfT,
@@ -125,6 +142,20 @@ function gatherSurfaces(target: Placed, project: Project): Surface[] {
       ),
     });
   }
+  for (const pn of project.people) {
+    if (pn.id === target.id) continue;
+    const fp = personFootprint(pn);
+    out.push({
+      top: (pn.baseHeight ?? 0) + personTopY(pn),
+      foot: rectAABB(
+        pn.position.x,
+        pn.position.z,
+        fp.width,
+        fp.depth,
+        pn.rotationDeg,
+      ),
+    });
+  }
   return out;
 }
 
@@ -141,6 +172,7 @@ export function snapHeight(target: Placed, project: Project): number {
     (project.carcasses.find((c) => c.id === target.id)?.baseHeight ??
       project.runners.find((r) => r.id === target.id)?.baseHeight ??
       project.refBoxes.find((b) => b.id === target.id)?.baseHeight ??
+      project.people.find((pn) => pn.id === target.id)?.baseHeight ??
       0);
   const eps = 1e-6;
 
@@ -155,4 +187,26 @@ export function snapHeight(target: Placed, project: Project): number {
     }
   }
   return found ? best : 0;
+}
+
+/** Highest horizontal surface Y at world point (x, z) that's at or below maxY.
+ *  Used to size a runner's leg support — it spans from the runner's underside
+ *  down to whatever's directly below it (floor when nothing else is there).
+ *  `excludeId` lets a runner ignore its own surfaces. */
+export function surfaceUnderPoint(
+  x: number,
+  z: number,
+  maxY: number,
+  project: Project,
+  excludeId?: string,
+): number {
+  const eps = 1e-6;
+  let best = 0;
+  for (const s of gatherSurfaces({ id: excludeId ?? "__none__" }, project)) {
+    if (s.top > maxY + eps) continue;
+    if (x < s.foot.minX - eps || x > s.foot.maxX + eps) continue;
+    if (z < s.foot.minZ - eps || z > s.foot.maxZ + eps) continue;
+    if (s.top > best) best = s.top;
+  }
+  return best;
 }

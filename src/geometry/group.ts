@@ -78,22 +78,58 @@ export function groupAABB(r: Runner, project: Project): AABB {
   };
 }
 
-/** Size + position a runner to span its owned cabinets, resting on top.
+/** World-x range of a carcass's INTERIOR (cavity) — the rectangle bounded by
+ *  the two side panels' inner faces, the back panel's inner face, and the
+ *  cabinet's front edge. Rotation-aware: a cabinet turned 90° presents its
+ *  back-panel-inside-face as the relevant interior bound along world-x, not a
+ *  side panel. */
+function cavityWorldXRange(
+  c: Carcass,
+  project: Project,
+): { minX: number; maxX: number } {
+  const sideT = materialThickness(
+    project.catalog.materials,
+    c.carcassMaterialId,
+  );
+  const backT = c.hasBack
+    ? materialThickness(project.catalog.materials, c.backMaterialId)
+    : 0;
+  const hwIn = c.width / 2 - sideT;
+  const backInner = -c.depth / 2 + backT;
+  const frontEdge = c.depth / 2;
+  // 4 cavity corners in local coords (front edge is open; using its line as
+  // the local-z bound on that side)
+  const corners: Array<[number, number]> = [
+    [-hwIn, backInner],
+    [hwIn, backInner],
+    [hwIn, frontEdge],
+    [-hwIn, frontEdge],
+  ];
+  const rad = (c.rotationDeg * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const xs = corners.map(([lx, lz]) => c.position.x + lx * cos - lz * sin);
+  return { minX: Math.min(...xs), maxX: Math.max(...xs) };
+}
+
+/** Size + position a runner to span its owned cabinets.
  *  - A desk top (groupDrag) covers the cabinets: ends flush with their outer
- *    edges.
- *  - A shelf (not groupDrag) fills the GAP between the two outermost cabinets:
- *    ends butt against the facing inner side walls. (One cabinet → its interior
- *    width.) Returns {} if it owns no cabinets. */
+ *    edges and the top RESTS on the cabinets (baseHeight = cabinet top).
+ *  - A shelf (not groupDrag) runs INSIDE the outermost cabinets, from the
+ *    leftmost cabinet's cavity −x bound to the rightmost cabinet's cavity +x
+ *    bound — a long board that threads through them all. The end bounds are
+ *    rotation-aware: a cabinet turned to face along the shelf direction stops
+ *    the board at its back-panel inside face. The shelf's vertical position is
+ *    the user's job (use "Snap to surface below"), so Span does NOT touch
+ *    baseHeight.
+ *  Returns {} if it owns no cabinets. */
 export function fitRunnerToCarcasses(
   r: Runner,
   project: Project,
 ): Partial<Runner> {
   const owned = ownedCarcasses(r, project);
   if (owned.length === 0) return {};
-  const sideT = (c: Carcass) =>
-    materialThickness(project.catalog.materials, c.carcassMaterialId);
   const avgZ = owned.reduce((s, c) => s + c.position.z, 0) / owned.length;
-  const top = Math.max(...owned.map((c) => (c.baseHeight ?? 0) + c.height));
 
   let left: number;
   let right: number;
@@ -102,24 +138,24 @@ export function fitRunnerToCarcasses(
     left = Math.min(...owned.map((c) => c.position.x - c.width / 2));
     right = Math.max(...owned.map((c) => c.position.x + c.width / 2));
   } else {
-    // shelf: span the gap between the leftmost and rightmost cabinets,
-    // butting against the facing side walls
+    // shelf: cavity −x bound of the leftmost cabinet → cavity +x bound of the
+    // rightmost cabinet (single cabinet → its own cavity x-range)
     const sorted = [...owned].sort((a, b) => a.position.x - b.position.x);
     const leftCab = sorted[0];
     const rightCab = sorted[sorted.length - 1];
-    left = leftCab.position.x + leftCab.width / 2; // right face of left cab
-    right = rightCab.position.x - rightCab.width / 2; // left face of right cab
-    if (right <= left) {
-      // single cabinet (or overlap): fall back to its interior width
-      left = leftCab.position.x - leftCab.width / 2 + sideT(leftCab);
-      right = rightCab.position.x + rightCab.width / 2 - sideT(rightCab);
-    }
+    left = cavityWorldXRange(leftCab, project).minX;
+    right = cavityWorldXRange(rightCab, project).maxX;
   }
-  return {
+  const patch: Partial<Runner> = {
     length: right - left,
     position: { x: (left + right) / 2, z: avgZ },
-    baseHeight: top,
   };
+  if (r.groupDrag) {
+    patch.baseHeight = Math.max(
+      ...owned.map((c) => (c.baseHeight ?? 0) + c.height),
+    );
+  }
+  return patch;
 }
 
 export interface GroupTranslation {

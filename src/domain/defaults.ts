@@ -1,4 +1,4 @@
-import type { Carcass, Project, RefBox, Runner, StockCatalog } from "./types";
+import type { Carcass, Person, Project, RefBox, Runner, StockCatalog } from "./types";
 import { evenlySpacedShelves } from "./shelves";
 
 export const PLY_34 = "ply-0.75";
@@ -132,13 +132,29 @@ export function defaultBumpOut(wall: "N" | "S" | "E" | "W" = "N") {
   };
 }
 
+export function defaultPerson(): Person {
+  return {
+    id: uid("person"),
+    label: "Person",
+    position: { x: 0, z: 0 },
+    rotationDeg: 0,
+    baseHeight: 0,
+    pose: "standing",
+    height: 70, // 5'10"
+  };
+}
+
 export function defaultRefBox(): RefBox {
+  // Tapered storage tote (bigger at the top than the bottom), matching the
+  // "My Room" reference tote so + Tote drops in something representative.
   return {
     id: uid("box"),
     label: "Tote",
-    width: 16,
-    height: 12,
-    depth: 24,
+    width: 13,
+    height: 16.5,
+    depth: 19,
+    topWidth: 16.25,
+    topDepth: 22.25,
     position: { x: 0, z: 24 },
     rotationDeg: 0,
     baseHeight: 0,
@@ -267,6 +283,7 @@ export function myRoom(): Project {
     carcasses: [left, right],
     runners: [desktop],
     refBoxes: [tote],
+    people: [],
   };
 }
 
@@ -287,7 +304,21 @@ export function defaultProject(): Project {
     carcasses: [defaultBookcase()],
     runners: [],
     refBoxes: [],
+    people: [],
   };
+}
+
+/** Coerce a value to a finite number, returning a fallback for anything else
+ *  (undefined, null, NaN, ±Infinity, non-numeric). JSON.stringify writes NaN
+ *  as null, so corrupt saves round-trip as null — handle both. */
+function num(v: unknown, fallback: number): number {
+  return typeof v === "number" && Number.isFinite(v) ? v : fallback;
+}
+
+/** Sanitize a {x,z} position; missing/null/NaN axes default to 0. */
+function pos(p: unknown): { x: number; z: number } {
+  const o = (p ?? {}) as { x?: unknown; z?: unknown };
+  return { x: num(o.x, 0), z: num(o.z, 0) };
 }
 
 /** Upgrade a legacy (auto-derived) runner to the explicit position/length
@@ -301,13 +332,24 @@ export function migrateRunner(
     (r.groupDrag as boolean | undefined) ??
     /desk\s*top/i.test(String(r.label ?? ""));
   const hasNew =
-    r.position !== undefined && typeof r.length === "number";
+    r.position !== undefined && typeof r.length === "number" && Number.isFinite(r.length as number);
   if (hasNew) {
+    const sup = ((r.supports as Runner["supports"]) ?? []).map((s) => ({
+      ...s,
+      offsetFromLeft: num(s.offsetFromLeft, 0),
+      ...(s.offsetFromCenterZ !== undefined
+        ? { offsetFromCenterZ: num(s.offsetFromCenterZ, 0) }
+        : {}),
+    }));
     return {
       ...(r as unknown as Runner),
       groupDrag,
-      rotationDeg: (r.rotationDeg as number) ?? 0,
-      baseHeight: (r.baseHeight as number) ?? 0,
+      length: num(r.length, 60),
+      depth: num(r.depth, 11.25),
+      position: pos(r.position),
+      rotationDeg: num(r.rotationDeg, 0),
+      baseHeight: num(r.baseHeight, 0),
+      supports: sup,
     };
   }
   const spannedIds = (r.spannedCarcassIds as string[]) ?? [];
@@ -331,13 +373,16 @@ export function migrateRunner(
     boardMaterialId: r.boardMaterialId as string,
     spannedCarcassIds: spannedIds,
     groupDrag,
-    length: worldRight - worldLeft,
-    depth: (r.depth as number) ?? 11.25,
-    position: { x: (worldLeft + worldRight) / 2, z },
+    length: num(worldRight - worldLeft, 60),
+    depth: num(r.depth, 11.25),
+    position: { x: num((worldLeft + worldRight) / 2, 0), z: num(z, 0) },
     rotationDeg: 0,
-    baseHeight: bottomHeight,
+    baseHeight: num(bottomHeight, 0),
     fastening: (r.fastening as Runner["fastening"]) ?? "pocket-screw",
-    supports: (r.supports as Runner["supports"]) ?? [],
+    supports: ((r.supports as Runner["supports"]) ?? []).map((s) => ({
+      ...s,
+      offsetFromLeft: num(s.offsetFromLeft, 0),
+    })),
   };
 }
 
@@ -361,6 +406,7 @@ function dedupeIds(p: Project): Project {
     carcasses: p.carcasses.map((c) => fix(c, "carcass")),
     runners: p.runners.map((r) => fix(r, "runner")),
     refBoxes: p.refBoxes.map((b) => fix(b, "box")),
+    people: p.people.map((pn) => fix(pn, "person")),
   };
 }
 
@@ -371,27 +417,57 @@ export function normalizeProject(p: Project): Project {
     units: p.units ?? "in",
     room: {
       ...p.room,
-      wallThickness: p.room.wallThickness ?? 4.5,
+      length: num(p.room.length, 128),
+      width: num(p.room.width, 120),
+      ceilingHeight: num(p.room.ceilingHeight, 96),
+      wallThickness: num(p.room.wallThickness, 4.5),
       walls:
         p.room.walls && p.room.walls.length >= 3
-          ? p.room.walls
-          : rectWalls(p.room.length ?? 128, p.room.width ?? 120),
+          ? p.room.walls.map((w) => pos(w))
+          : rectWalls(num(p.room.length, 128), num(p.room.width, 120)),
       baseboard:
-        p.room.baseboard === undefined
+        p.room.baseboard === undefined || p.room.baseboard === null
           ? { height: 3.5, thickness: 0.5 }
-          : p.room.baseboard,
+          : {
+              height: num(p.room.baseboard.height, 3.5),
+              thickness: num(p.room.baseboard.thickness, 0.5),
+            },
     },
     carcasses: (p.carcasses ?? []).map((c) => ({
       ...c,
-      baseHeight: c.baseHeight ?? 0,
+      width: num(c.width, 20.75),
+      height: num(c.height, 72),
+      depth: num(c.depth, 11.25),
+      rotationDeg: num(c.rotationDeg, 0),
+      baseHeight: num(c.baseHeight, 0),
+      toeKickHeight: num(c.toeKickHeight, 3),
+      position: pos(c.position),
+      shelves: (c.shelves ?? []).map((sh) => ({
+        ...sh,
+        offsetFromBottom: num(sh.offsetFromBottom, 0),
+      })),
     })),
     runners: (p.runners ?? []).map((r) =>
       migrateRunner(r as unknown as Record<string, unknown>, p.carcasses ?? []),
     ),
     refBoxes: (p.refBoxes ?? []).map((b) => ({
       ...b,
-      rotationDeg: b.rotationDeg ?? 0,
-      baseHeight: b.baseHeight ?? 0,
+      width: num(b.width, 16),
+      height: num(b.height, 12),
+      depth: num(b.depth, 24),
+      ...(b.topWidth !== undefined ? { topWidth: num(b.topWidth, b.width) } : {}),
+      ...(b.topDepth !== undefined ? { topDepth: num(b.topDepth, b.depth) } : {}),
+      rotationDeg: num(b.rotationDeg, 0),
+      baseHeight: num(b.baseHeight, 0),
+      position: pos(b.position),
+    })),
+    people: (p.people ?? []).map((pn) => ({
+      ...pn,
+      rotationDeg: num(pn.rotationDeg, 0),
+      baseHeight: num(pn.baseHeight, 0),
+      pose: pn.pose ?? "standing",
+      height: num(pn.height, 70),
+      position: pos(pn.position),
     })),
   });
 }

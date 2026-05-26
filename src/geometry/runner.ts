@@ -45,6 +45,12 @@ export function buildRunner(
   r: Runner,
   carcasses: Carcass[],
   catalog: StockCatalog,
+  options?: {
+    /** Highest surface Y at world (x, z) ≤ maxY. Used to auto-size a `leg`
+     *  support so it spans from the runner's underside down to whatever's
+     *  directly below it (defaults to floor / 0 when omitted). */
+    surfaceUnder?: (x: number, z: number, maxY: number) => number;
+  },
 ): CarcassGeometry & { layout: RunnerLayout } {
   const L = runnerLayout(r, carcasses, catalog);
   const parts: Part[] = [];
@@ -90,9 +96,10 @@ export function buildRunner(
     });
   }
 
-  // supports: local x measured from the board centre
+  // supports: local x measured from the board centre, local z from centre line
   for (const s of r.supports) {
     const sx = -r.length / 2 + s.offsetFromLeft;
+    const sz = s.offsetFromCenterZ ?? 0;
     if (s.kind === "bracket") {
       joints.push({
         id: jid(),
@@ -108,14 +115,25 @@ export function buildRunner(
     let box: { x: number; y: number; z: number };
     let center: { x: number; y: number; z: number };
     if (s.kind === "leg") {
-      box = { x: 1.5, y: base, z: 1.5 };
-      center = { x: sx, y: -base / 2, z: 0 };
+      // span from the runner's underside down to whatever's below this support
+      // at its world (x, z) point — accounts for the runner's rotation AND the
+      // support's own (sx, sz) offsets in the runner-local frame.
+      const rad = (r.rotationDeg * Math.PI) / 180;
+      const cos = Math.cos(rad);
+      const sin = Math.sin(rad);
+      const wx = r.position.x + sx * cos - sz * sin;
+      const wz = r.position.z + sx * sin + sz * cos;
+      const surfaceY = options?.surfaceUnder?.(wx, wz, base) ?? 0;
+      const legH = Math.max(0, base - surfaceY);
+      box = { x: 1.5, y: legH, z: 1.5 };
+      // local y origin = board centre underside; leg top at 0, bottom at -legH
+      center = { x: sx, y: -legH / 2, z: sz };
     } else if (s.kind === "cleat") {
       box = { x: 6, y: 1.5, z: r.depth };
-      center = { x: sx, y: -0.75, z: 0 };
+      center = { x: sx, y: -0.75, z: sz };
     } else {
       box = { x: 1.5, y: 6, z: 6 };
-      center = { x: sx, y: -3, z: 0 };
+      center = { x: sx, y: -3, z: sz };
     }
     parts.push({
       id: sid,

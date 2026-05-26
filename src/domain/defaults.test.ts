@@ -95,6 +95,38 @@ describe("normalizeProject carcass stacking defaults", () => {
     expect(L.worldRight).toBeCloseTo(legacyRight, 6);
   });
 
+  it("sanitizes NaN / null / undefined numerics on load (recovers a corrupt save)", () => {
+    // Simulate a project that was round-tripped through JSON.stringify after
+    // its numerics went NaN: JSON writes NaN as null, which loads back, and
+    // any arithmetic on null produces NaN — that's how saved data stays bad.
+    const p = defaultProject();
+    p.refBoxes = [
+      // null position fields, undefined width
+      { id: "T1", label: "Bad tote", width: null as unknown as number, height: 12, depth: null as unknown as number, position: { x: null as unknown as number, z: 0 } } as never,
+    ];
+    p.runners = [
+      // null/NaN length and position; explicit-shape so it short-circuits migrateRunner
+      { id: "R1", label: "Bad runner", boardMaterialId: "pine-2x12", spannedCarcassIds: [], length: null as unknown as number, depth: 11.25, position: { x: NaN, z: null as unknown as number }, rotationDeg: 0, baseHeight: NaN, fastening: "pocket-screw", supports: [{ id: "s", kind: "leg", offsetFromLeft: NaN } as never] } as never,
+    ];
+    p.people = [
+      { id: "P1", label: "Bad person", position: { x: null as unknown as number, z: 0 }, rotationDeg: 0, pose: "standing", height: NaN } as never,
+    ];
+    const n = normalizeProject(p);
+    // every numeric field is now finite
+    const allFinite = (o: Record<string, unknown>): boolean =>
+      Object.values(o).every((v) =>
+        typeof v === "number"
+          ? Number.isFinite(v)
+          : v && typeof v === "object" && !Array.isArray(v)
+            ? allFinite(v as Record<string, unknown>)
+            : true,
+      );
+    expect(allFinite(n.refBoxes[0] as unknown as Record<string, unknown>)).toBe(true);
+    expect(allFinite(n.runners[0] as unknown as Record<string, unknown>)).toBe(true);
+    expect(allFinite(n.people[0] as unknown as Record<string, unknown>)).toBe(true);
+    expect(Number.isFinite(n.runners[0].supports[0].offsetFromLeft)).toBe(true);
+  });
+
   it("defaults rotation/baseHeight on legacy totes", () => {
     const p = defaultProject();
     p.refBoxes = [
