@@ -36,6 +36,7 @@ import { DimField, NumField, SelectField, StepField } from "./fields";
 import { UnitsProvider, useUnits } from "./units";
 import { useProjectHistory } from "./useProjectHistory";
 import { JutTool } from "./JutTool";
+import { SnapshotRecorder } from "./SnapshotRecorder";
 import { bomCsv, cutListCsv, downloadText, pocketCsv } from "../report/csv";
 import {
   exportProjectJson,
@@ -124,6 +125,7 @@ export default function App() {
         canUndo={hist.canUndo}
         canRedo={hist.canRedo}
       />
+      <SnapshotRecorder />
     </UnitsProvider>
   );
 }

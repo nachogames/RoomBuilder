@@ -185,8 +185,6 @@ function ToteMesh({ b }: { b: RefBox }) {
       {!tapered && <boxGeometry args={[b.width, b.height, b.depth]} />}
       <meshStandardMaterial
         color="#5fa8d3"
-        transparent
-        opacity={0.45}
         side={THREE.DoubleSide}
       />
     </mesh>
@@ -268,7 +266,7 @@ function RefBoxes({ project }: { project: Project }) {
 }
 
 const SLAB_COLOR = {
-  wall: "#3a6ea5",
+  wall: "#e8e8ec",
   baseboard: "#6a6a72",
 } as const;
 
@@ -308,8 +306,8 @@ function SlabMesh({ s, dollhouse }: { s: RefSlab; dollhouse: boolean }) {
       <mesh ref={ref} geometry={geom} renderOrder={-1}>
         <meshStandardMaterial
           color={SLAB_COLOR[s.kind]}
-          transparent
-          opacity={s.kind === "baseboard" ? 0.85 : 0.16}
+          transparent={s.kind === "baseboard"}
+          opacity={s.kind === "baseboard" ? 0.85 : 1}
           side={THREE.DoubleSide}
         />
       </mesh>
@@ -327,8 +325,8 @@ function SlabMesh({ s, dollhouse }: { s: RefSlab; dollhouse: boolean }) {
       <boxGeometry args={[s.size?.x ?? 0, s.size?.y ?? 0, s.size?.z ?? 0]} />
       <meshStandardMaterial
         color={SLAB_COLOR[s.kind]}
-        transparent
-        opacity={s.kind === "baseboard" ? 0.85 : 0.16}
+        transparent={s.kind === "baseboard"}
+        opacity={s.kind === "baseboard" ? 0.85 : 1}
         side={2}
       />
     </mesh>

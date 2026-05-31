@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import type { Project, Pt } from "../domain/types";
 import { translateGroup } from "../geometry/group";
 import { findContainer, clampToInterior } from "../geometry/container";
+import { attemptToteMove } from "../geometry/totePush";
 import { resolveMove } from "./dragMath";
 import {
   baseboardLengthInches,
@@ -224,20 +225,58 @@ export function PlanView({
       const bw = Math.max(bx.width, bx.topWidth ?? bx.width);
       const bd = Math.max(bx.depth, bx.topDepth ?? bx.depth);
       const p0 = bx.position;
+      const okFn = (px: number, pz: number) =>
+        rectInsideRoom(walls, px, pz, bw, bd, bx.rotationDeg);
       const container = findContainer(
         { id: bx.id, w: bw, d: bd, cx: tx, cz: tz, rotationDeg: bx.rotationDeg, prevPos: p0 },
         project,
       );
-      const ok = (px: number, pz: number) =>
-        rectInsideRoom(walls, px, pz, bw, bd, bx.rotationDeg);
-      const pos = container
-        ? clampToInterior(container, bw, bd, tx, tz, project, bx.rotationDeg)
-        : resolveMove(ok, tx, tz, p0, false);
-      if (pos === p0) return;
+      // Clamp the cursor target to the mover's own room/container constraint;
+      // the cascade handles tote-vs-tote collision (with partial-push when the
+      // chain bottoms out against a wall).
+      const clampTarget = (cx: number, cz: number) =>
+        container
+          ? clampToInterior(container, bw, bd, cx, cz, project, bx.rotationDeg)
+          : resolveMove(okFn, cx, cz, p0, false);
+      // Try diagonal first; if the chain bottoms out and produces no movement,
+      // try each axis alone so the mover can still slide along the constraint.
+      const tryAttempt = (cx: number, cz: number) => {
+        const c = clampTarget(cx, cz);
+        if (Math.abs(c.x - p0.x) < 1e-6 && Math.abs(c.z - p0.z) < 1e-6) return null;
+        const r = attemptToteMove(project, bx.id, c.x, c.z);
+        if (!r.ok || !r.moverPos) return null;
+        const moved =
+          Math.abs(r.moverPos.x - p0.x) > 1 / 64 ||
+          Math.abs(r.moverPos.z - p0.z) > 1 / 64 ||
+          Object.keys(r.updates).length > 0;
+        if (!moved) return null;
+        return { r, clamped: c };
+      };
+      const attempt =
+        tryAttempt(tx, tz) ?? tryAttempt(tx, p0.z) ?? tryAttempt(p0.x, tz);
+      if (!attempt) {
+        // Mover can't move at all this tick. Still re-anchor the grab to the
+        // current position so the cursor doesn't accumulate offset and produce
+        // a rubber-band jump when the user reverses direction.
+        if (Math.abs(p0.x - tx) > 1 / 64 || Math.abs(p0.z - tz) > 1 / 64) {
+          setDrag({ ...drag, dx: p0.x - x, dz: p0.z - z });
+        }
+        return;
+      }
+      const { r: result } = attempt;
+      const pos = result.moverPos!;
+      // Re-anchor the grab offset so the next mousemove tracks from where the
+      // mover actually ended up — prevents the rubber-band that would otherwise
+      // build up whenever the cursor outruns the mover (chain hits a wall, axis
+      // slide, etc.).
+      if (Math.abs(pos.x - tx) > 1 / 64 || Math.abs(pos.z - tz) > 1 / 64) {
+        setDrag({ ...drag, dx: pos.x - x, dz: pos.z - z });
+      }
+      const updates = { ...result.updates, [bx.id]: pos };
       setProject((pr) => ({
         ...pr,
         refBoxes: pr.refBoxes.map((k) =>
-          k.id === drag.id ? { ...k, position: pos } : k,
+          updates[k.id] ? { ...k, position: updates[k.id] } : k,
         ),
       }));
     } else {
