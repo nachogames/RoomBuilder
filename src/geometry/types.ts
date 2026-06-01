@@ -36,6 +36,11 @@ export interface JointMember {
   role: PartRole;
 }
 
+/** Which edge of the drilled part the joinery (pocket holes / pins /
+ *  dado) lives on. Uses the Part-local axes: x along length, z along
+ *  width. */
+export type DrilledEdge = "left" | "right" | "top-edge" | "bottom-edge";
+
 export interface Joint {
   id: string;
   carcassId: string;
@@ -44,6 +49,8 @@ export interface Joint {
   members: JointMember[];
   /** the member that receives the pocket holes / pins / dado, if applicable */
   drilledPartId?: string;
+  /** edge of the drilled part the joinery sits on */
+  drilledEdge?: DrilledEdge;
   /** length of the mating edge, used to space fasteners */
   edgeLength: Inches;
 }

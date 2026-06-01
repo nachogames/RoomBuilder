@@ -39,12 +39,14 @@ export interface SubSel {
 }
 interface SelectionCtxValue {
   sel: string;
+  extras: ReadonlySet<string>;
   subSel: SubSel | null;
-  onSelect: (id: string) => void;
+  onSelect: (id: string, opts?: { toggle?: boolean }) => void;
   onSelectShelf: (carcassId: string, idx: number) => void;
 }
 const SelectionCtx = createContext<SelectionCtxValue>({
   sel: "",
+  extras: new Set(),
   subSel: null,
   onSelect: () => {},
   onSelectShelf: () => {},
@@ -65,14 +67,28 @@ function useRegisterGroupRef(id: string, obj: THREE.Object3D | null) {
  *  over a different item would steal selection mid-drag. */
 const gizmoBusy = { current: false };
 
+/** True if this id is the active selection or part of the multi-selection. */
+function isSelected(
+  id: string,
+  sel: string,
+  extras: ReadonlySet<string>,
+): boolean {
+  return sel === id || extras.has(id);
+}
+
 /** Click handler factory: select this id on pointerdown and stop the event so
  *  it doesn't also fire the deselect plane behind us. Skips when the gizmo
- *  is mid-drag. */
-function selectHandler(id: string, onSelect: (id: string) => void) {
+ *  is mid-drag. Cmd/Ctrl-click toggles into a multi-selection. */
+function selectHandler(
+  id: string,
+  onSelect: (id: string, opts?: { toggle?: boolean }) => void,
+) {
   return (e: ThreeEvent<PointerEvent>) => {
     if (gizmoBusy.current) return;
     e.stopPropagation();
-    onSelect(id);
+    const native = e.nativeEvent as PointerEvent | undefined;
+    const toggle = !!(native && (native.metaKey || native.ctrlKey));
+    onSelect(id, { toggle });
   };
 }
 
@@ -145,7 +161,7 @@ function CarcassGroup({
     () => buildCarcass(carcass, project.catalog).parts,
     [carcass, project.catalog],
   );
-  const { sel, onSelect, onSelectShelf } = useContext(SelectionCtx);
+  const { sel, extras, onSelect, onSelectShelf } = useContext(SelectionCtx);
   const ref = useRef<THREE.Group>(null);
   useRegisterGroupRef(carcass.id, ref.current);
   const px = carcass.position.x;
@@ -187,13 +203,13 @@ function CarcassGroup({
         }
         return <PartMesh key={p.id} part={p} />;
       })}
-      {sel === carcass.id && <SelectionOutline />}
+      {isSelected(carcass.id, sel, extras) && <SelectionOutline />}
     </group>
   );
 }
 
 function RunnerGroup({ r, parts }: { r: Runner; parts: Part[] }) {
-  const { sel, onSelect } = useContext(SelectionCtx);
+  const { sel, extras, onSelect } = useContext(SelectionCtx);
   const ref = useRef<THREE.Group>(null);
   useRegisterGroupRef(r.id, ref.current);
   const px = r.position.x;
@@ -219,7 +235,7 @@ function RunnerGroup({ r, parts }: { r: Runner; parts: Part[] }) {
       {parts.map((p) => (
         <PartMesh key={p.id} part={p} />
       ))}
-      {sel === r.id && <SelectionOutline />}
+      {isSelected(r.id, sel, extras) && <SelectionOutline />}
     </group>
   );
 }
@@ -247,7 +263,7 @@ function RunnerMeshes({ project }: { project: Project }) {
 
 function ToteMesh({ b }: { b: RefBox }) {
   const tapered = b.topWidth != null && b.topDepth != null;
-  const { sel, onSelect } = useContext(SelectionCtx);
+  const { sel, extras, onSelect } = useContext(SelectionCtx);
   const ref = useRef<THREE.Group>(null);
   useRegisterGroupRef(b.id, ref.current);
   const geom = useMemo(() => {
@@ -298,7 +314,7 @@ function ToteMesh({ b }: { b: RefBox }) {
           side={THREE.DoubleSide}
         />
       </mesh>
-      {sel === b.id && <SelectionOutline />}
+      {isSelected(b.id, sel, extras) && <SelectionOutline />}
     </group>
   );
 }
@@ -311,7 +327,7 @@ function PersonMesh({ p }: { p: Person }) {
   const opacity = 0.55;
   const base = p.baseHeight ?? 0;
   const rotY = (-p.rotationDeg * Math.PI) / 180;
-  const { sel, onSelect } = useContext(SelectionCtx);
+  const { sel, extras, onSelect } = useContext(SelectionCtx);
   const ref = useRef<THREE.Group>(null);
   useRegisterGroupRef(p.id, ref.current);
   if (
@@ -343,7 +359,7 @@ function PersonMesh({ p }: { p: Person }) {
           <boxGeometry args={[fp.width - 4, 4, fp.depth - torsoD]} />
           <meshStandardMaterial color={color} transparent opacity={opacity} />
         </mesh>
-        {sel === p.id && <SelectionOutline />}
+        {isSelected(p.id, sel, extras) && <SelectionOutline />}
       </group>
     );
   }
@@ -358,7 +374,7 @@ function PersonMesh({ p }: { p: Person }) {
         <boxGeometry args={[fp.width, p.height, fp.depth]} />
         <meshStandardMaterial color={color} transparent opacity={opacity} />
       </mesh>
-      {sel === p.id && <SelectionOutline />}
+      {isSelected(p.id, sel, extras) && <SelectionOutline />}
     </group>
   );
 }
@@ -823,6 +839,7 @@ export function Scene({
   project,
   dollhouse = true,
   sel = "",
+  extras = new Set<string>(),
   subSel = null,
   onSelect = () => {},
   onSelectShelf = () => {},
@@ -834,9 +851,11 @@ export function Scene({
   project: Project;
   dollhouse?: boolean;
   sel?: string;
+  /** Additional items in a multi-selection. Same outline as `sel`. */
+  extras?: ReadonlySet<string>;
   /** Sub-selection inside the selected carcass (e.g. a specific shelf). */
   subSel?: SubSel | null;
-  onSelect?: (id: string) => void;
+  onSelect?: (id: string, opts?: { toggle?: boolean }) => void;
   /** Sets sel to carcassId and subSel to { shelf, idx }. */
   onSelectShelf?: (carcassId: string, idx: number) => void;
   onPatchEntity?: (id: string, kind: MovableKind, patch: PatchEntityArg) => void;
@@ -905,8 +924,8 @@ export function Scene({
   );
 
   const selectionCtx = useMemo(
-    () => ({ sel, subSel, onSelect, onSelectShelf }),
-    [sel, subSel, onSelect, onSelectShelf],
+    () => ({ sel, extras, subSel, onSelect, onSelectShelf }),
+    [sel, extras, subSel, onSelect, onSelectShelf],
   );
 
   return (

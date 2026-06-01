@@ -90,8 +90,9 @@ export function buildCarcass(
     }),
   );
 
-  for (const [sideId, side] of sideIds.entries()) {
-    const sideLabel = sideId === 0 ? "left" : "right";
+  for (const [sideIdx, side] of sideIds.entries()) {
+    const sideLabel = sideIdx === 0 ? "left" : "right";
+    const edge = sideIdx === 0 ? "left" : "right";
     joints.push({
       id: jid(),
       carcassId: c.id,
@@ -102,6 +103,7 @@ export function buildCarcass(
         { partId: side, role: "side" },
       ],
       drilledPartId: topId,
+      drilledEdge: edge,
       edgeLength: D,
     });
     joints.push({
@@ -114,6 +116,7 @@ export function buildCarcass(
         { partId: side, role: "side" },
       ],
       drilledPartId: bottomId,
+      drilledEdge: edge,
       edgeLength: D,
     });
   }
@@ -136,7 +139,7 @@ export function buildCarcass(
         minor: toe,
       }),
     );
-    for (const side of sideIds) {
+    for (const [sideIdx, side] of sideIds.entries()) {
       joints.push({
         id: jid(),
         carcassId: c.id,
@@ -147,6 +150,7 @@ export function buildCarcass(
           { partId: side, role: "side" },
         ],
         drilledPartId: kickId,
+        drilledEdge: sideIdx === 0 ? "left" : "right",
         edgeLength: toe,
       });
     }
@@ -210,7 +214,8 @@ export function buildCarcass(
         minor: shelfDepth,
       }),
     );
-    for (const side of sideIds) {
+    for (const [sideIdx, side] of sideIds.entries()) {
+      const drilled = sh.attachment === "shelf-pin" ? undefined : id;
       joints.push({
         id: jid(),
         carcassId: c.id,
@@ -220,8 +225,8 @@ export function buildCarcass(
           { partId: id, role: "shelf" },
           { partId: side, role: "side" },
         ],
-        drilledPartId:
-          sh.attachment === "shelf-pin" ? undefined : id,
+        drilledPartId: drilled,
+        drilledEdge: drilled ? (sideIdx === 0 ? "left" : "right") : undefined,
         edgeLength: shelfDepth,
       });
     }
