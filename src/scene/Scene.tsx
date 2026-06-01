@@ -725,7 +725,10 @@ function MoveGizmo({
         object={proxy}
         mode="translate"
         size={0.75}
-        translationSnap={1}
+        // No translationSnap: 1\" snapping in 3D meant the carcass could
+        // land 0.125-1\" short of a wall depending on where the drag
+        // started (the wall clamp can't pull a snapped position to an
+        // arbitrary fractional one). Free drag matches Plan view.
         // Shelf: Y-only. Person: hide Y. Otherwise: all axes.
         showX={!isShelf && kind !== null}
         showY={isShelf || (kind !== null && kind !== "person")}
