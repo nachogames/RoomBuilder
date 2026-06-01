@@ -10,6 +10,30 @@ import { personFootprint } from "../domain/person";
 
 export type MovableKind = "carcass" | "runner" | "refBox" | "person";
 
+/**
+ * The world-space footprint of a carcass including its surface-mounted
+ * back panel. The back hangs off the carcass's local -z direction by
+ * `tb`, so the enlarged rect is `(width, depth + tb)` shifted from
+ * `(px, pz)` by `tb/2` toward local -z.
+ */
+export function carcassRoomRect(
+  c: Carcass,
+  project: Project,
+  px: number,
+  pz: number,
+): { cx: number; cz: number; w: number; d: number } {
+  const tb = c.hasBack
+    ? materialThickness(project.catalog.materials, c.backMaterialId)
+    : 0;
+  const a = (c.rotationDeg * Math.PI) / 180;
+  return {
+    cx: px + -Math.sin(a) * (tb / 2),
+    cz: pz + -Math.cos(a) * (tb / 2),
+    w: c.width,
+    d: c.depth + tb,
+  };
+}
+
 export interface DropTarget {
   x: number;
   z: number;
@@ -79,8 +103,10 @@ function dropCarcass(project: Project, id: string, t: DropTarget): DropResult {
   const c = project.carcasses.find((k) => k.id === id);
   if (!c) return { project };
   const oldY = c.baseHeight ?? 0;
-  const ok = (px: number, pz: number) =>
-    rectInsideRoom(project.room.walls, px, pz, c.width, c.depth, c.rotationDeg);
+  const ok = (px: number, pz: number) => {
+    const r = carcassRoomRect(c, project, px, pz);
+    return rectInsideRoom(project.room.walls, r.cx, r.cz, r.w, r.d, c.rotationDeg);
+  };
   const pos = resolveMove(ok, t.x, t.z, c.position, false);
   const next: Carcass = { ...c, position: pos };
   const proj1: Project = {

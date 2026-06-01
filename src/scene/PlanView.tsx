@@ -4,6 +4,7 @@ import { translateGroup } from "../geometry/group";
 import { findContainer, clampToInterior } from "../geometry/container";
 import { attemptToteMove } from "../geometry/totePush";
 import { resolveMove } from "./dragMath";
+import { carcassRoomRect } from "./placement";
 import {
   baseboardLengthInches,
   centroid,
@@ -162,9 +163,13 @@ export function PlanView({
       const tx = x + drag.dx;
       const tz = z + drag.dz;
       // wall resistance with slide: block only the axis that would push the
-      // footprint through a wall, so you can still run along it.
-      const ok = (px: number, pz: number) =>
-        rectInsideRoom(walls, px, pz, c.width, c.depth, c.rotationDeg);
+      // footprint through a wall, so you can still run along it. The
+      // footprint includes the surface-mounted back panel hanging off the
+      // carcass's rear.
+      const ok = (px: number, pz: number) => {
+        const r = carcassRoomRect(c, project, px, pz);
+        return rectInsideRoom(walls, r.cx, r.cz, r.w, r.d, c.rotationDeg);
+      };
       const p0 = c.position;
       const pos = resolveMove(ok, tx, tz, p0, false);
       if (pos === p0) return;
