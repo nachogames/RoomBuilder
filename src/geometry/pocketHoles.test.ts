@@ -46,13 +46,12 @@ describe("pocketHoleMarks (default bookcase)", () => {
 });
 
 describe("pocketHoleMarks face mapping", () => {
-  it("left-edge marks sit on the part's -x face, normal -x", () => {
+  it("top-panel marks sit on the underside (-y) of the top, inset from the end", () => {
     const c = defaultBookcase();
     const cat = defaultCatalog();
     const g = buildCarcass(c, cat);
     const marks = pocketHoleMarks(g.parts, g.joints, cat);
 
-    // Pick a left-edge joint on the Top
     const leftTopJoint = g.joints.find(
       (j) =>
         j.method === "pocket-screw" &&
@@ -64,17 +63,22 @@ describe("pocketHoleMarks face mapping", () => {
     const leftMarks = marks.filter((m) => m.jointId === leftTopJoint.id);
     expect(leftMarks.length).toBeGreaterThan(0);
 
+    // Underside of the top panel is at center.y - thickness/2.
+    const underside = topPart.center.y - topPart.box.y / 2;
     for (const m of leftMarks) {
-      // Entrance plane is at the part's -x face (carcass-local).
-      expect(m.center.x).toBeCloseTo(topPart.center.x - topPart.box.x / 2, 5);
-      // Outward normal points -x
-      expect(m.normal.x).toBeCloseTo(-1, 5);
-      expect(m.normal.y).toBeCloseTo(0, 5);
+      expect(m.center.y).toBeCloseTo(underside, 5);
+      // Face normal points -y (out of the underside)
+      expect(m.normal.x).toBeCloseTo(0, 5);
+      expect(m.normal.y).toBeCloseTo(-1, 5);
       expect(m.normal.z).toBeCloseTo(0, 5);
+      // The entrance is INSET from the -x end of the part, not flush
+      // with the end-grain face.
+      const minusXEnd = topPart.center.x - topPart.box.x / 2;
+      expect(m.center.x).toBeGreaterThan(minusXEnd);
     }
   });
 
-  it("right-edge marks sit on the part's +x face, normal +x", () => {
+  it("right-edge top marks are inset from the +x end", () => {
     const c = defaultBookcase();
     const cat = defaultCatalog();
     const g = buildCarcass(c, cat);
@@ -91,8 +95,35 @@ describe("pocketHoleMarks face mapping", () => {
     const rightMarks = marks.filter((m) => m.jointId === rightTopJoint.id);
 
     for (const m of rightMarks) {
-      expect(m.center.x).toBeCloseTo(topPart.center.x + topPart.box.x / 2, 5);
-      expect(m.normal.x).toBeCloseTo(1, 5);
+      const plusXEnd = topPart.center.x + topPart.box.x / 2;
+      expect(m.center.x).toBeLessThan(plusXEnd);
+      // Drill axis tilts toward the +x end (the mate side)
+      expect(m.drillAxis.x).toBeGreaterThan(0);
+      // and primarily points up into the part
+      expect(m.drillAxis.y).toBeGreaterThan(0);
+    }
+  });
+
+  it("bottom panel marks sit on the topside (+y) of the bottom", () => {
+    const c = defaultBookcase();
+    const cat = defaultCatalog();
+    const g = buildCarcass(c, cat);
+    const marks = pocketHoleMarks(g.parts, g.joints, cat);
+
+    const bottomJoint = g.joints.find(
+      (j) =>
+        j.method === "pocket-screw" &&
+        j.drilledPartId !== undefined &&
+        j.label.startsWith("Bottom"),
+    )!;
+    const bottomPart = g.parts.find((p) => p.id === bottomJoint.drilledPartId)!;
+    const bMarks = marks.filter((m) => m.jointId === bottomJoint.id);
+    expect(bMarks.length).toBeGreaterThan(0);
+
+    const topside = bottomPart.center.y + bottomPart.box.y / 2;
+    for (const m of bMarks) {
+      expect(m.center.y).toBeCloseTo(topside, 5);
+      expect(m.normal.y).toBeCloseTo(1, 5);
     }
   });
 
