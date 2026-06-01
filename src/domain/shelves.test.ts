@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { evenlySpacedShelves, interiorClearHeight } from "./shelves";
+import { evenlySpacedShelves, interiorClearHeight, isEvenlySpaced } from "./shelves";
 import { defaultBookcase, defaultCatalog } from "./defaults";
 
 describe("evenlySpacedShelves", () => {
@@ -35,5 +35,31 @@ describe("evenlySpacedShelves", () => {
       expect(s.offsetFromBottom).toBeGreaterThan(0);
       expect(s.offsetFromBottom).toBeLessThan(H);
     }
+  });
+});
+
+describe("isEvenlySpaced", () => {
+  const cat = defaultCatalog();
+  const c = defaultBookcase();
+
+  it("true when shelves come straight from evenlySpacedShelves", () => {
+    const even = { ...c, shelves: evenlySpacedShelves(c, cat, 3, "pocket-screw") };
+    expect(isEvenlySpaced(even, cat)).toBe(true);
+  });
+
+  it("true for an empty shelf array", () => {
+    const empty = { ...c, shelves: [] };
+    expect(isEvenlySpaced(empty, cat)).toBe(true);
+  });
+
+  it("false when a shelf is nudged off the even position", () => {
+    const shelves = evenlySpacedShelves(c, cat, 3, "pocket-screw");
+    const nudged = {
+      ...c,
+      shelves: shelves.map((s, i) =>
+        i === 1 ? { ...s, offsetFromBottom: s.offsetFromBottom + 0.5 } : s,
+      ),
+    };
+    expect(isEvenlySpaced(nudged, cat)).toBe(false);
   });
 });

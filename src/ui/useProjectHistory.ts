@@ -20,6 +20,13 @@ export function useProjectHistory(initial: Project, coalesceMs = 600) {
     future: [],
   });
   const lastTs = useRef(0);
+  /** When >0, every setProject inside the group coalesces into the same
+   *  history entry regardless of timing. Used for explicit interactions like
+   *  a gizmo drag where the operation may exceed the time-based coalesce. */
+  const groupDepth = useRef(0);
+  /** Set when entering a group; first setProject inside MUST create a fresh
+   *  history entry (so it can be undone), subsequent ones coalesce in. */
+  const groupStarted = useRef(false);
 
   const setProject = useCallback(
     (u: Updater) => {
@@ -30,7 +37,13 @@ export function useProjectHistory(initial: Project, coalesceMs = 600) {
             : u;
         if (next === s.present) return s;
         const now = Date.now();
-        const coalesce = now - lastTs.current < coalesceMs;
+        let coalesce: boolean;
+        if (groupDepth.current > 0) {
+          coalesce = groupStarted.current;
+          groupStarted.current = true;
+        } else {
+          coalesce = now - lastTs.current < coalesceMs;
+        }
         lastTs.current = now;
         return {
           past: coalesce ? s.past : [...s.past, s.present].slice(-100),
@@ -41,6 +54,21 @@ export function useProjectHistory(initial: Project, coalesceMs = 600) {
     },
     [coalesceMs],
   );
+
+  const beginInteraction = useCallback(() => {
+    groupDepth.current += 1;
+    if (groupDepth.current === 1) groupStarted.current = false;
+  }, []);
+
+  const endInteraction = useCallback(() => {
+    groupDepth.current = Math.max(0, groupDepth.current - 1);
+    if (groupDepth.current === 0) {
+      groupStarted.current = false;
+      // Reset time-based coalesce so the next edit after an interaction
+      // doesn't accidentally merge into it.
+      lastTs.current = 0;
+    }
+  }, []);
 
   const undo = useCallback(() => {
     lastTs.current = 0;
@@ -75,5 +103,7 @@ export function useProjectHistory(initial: Project, coalesceMs = 600) {
     redo,
     canUndo: h.past.length > 0,
     canRedo: h.future.length > 0,
+    beginInteraction,
+    endInteraction,
   };
 }

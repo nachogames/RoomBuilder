@@ -14,6 +14,25 @@ export function interiorClearHeight(
   return c.height - c.toeKickHeight - 2 * t;
 }
 
+/** True iff the shelves are positioned as `evenlySpacedShelves` would
+ *  produce for the same count and carcass — i.e. the user hasn't customized
+ *  any positions. Compared with a 1/64" tolerance (the inspector grid). */
+export function isEvenlySpaced(
+  c: Carcass,
+  catalog: StockCatalog,
+): boolean {
+  const n = c.shelves.length;
+  if (n === 0) return true;
+  const attachment = c.shelves[0]?.attachment ?? "pocket-screw";
+  const expected = evenlySpacedShelves(c, catalog, n, attachment);
+  const tol = 1 / 64;
+  for (let i = 0; i < n; i++) {
+    if (Math.abs(c.shelves[i].offsetFromBottom - expected[i].offsetFromBottom) > tol)
+      return false;
+  }
+  return true;
+}
+
 /**
  * N shelves with EQUAL clear openings, accounting for shelf thickness.
  * `offsetFromBottom` is the shelf's bottom face distance from the interior

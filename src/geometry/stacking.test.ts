@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { objectTop, snapHeight, surfaceUnderPoint } from "./stacking";
+import {
+  objectTop,
+  snapHeight,
+  surfaceUnderPoint,
+  dependentsOf,
+  shelfSurfaceId,
+} from "./stacking";
 import {
   defaultBookcase,
   defaultRunner,
@@ -285,5 +291,161 @@ describe("surfaceUnderPoint — highest surface ≤ maxY at a world (x,z) point"
     };
     // maxY 30 < desktop top 51.5 → not a candidate → falls back to 0
     expect(surfaceUnderPoint(0, 0, 30, projectWith([], [desktop]))).toBe(0);
+  });
+});
+
+describe("dependentsOf — items resting on a support", () => {
+  it("returns direct dependents: tote on a shelf top", () => {
+    // toeKick 3 + carcass 0.75 → interior floor 3.75
+    // shelf offsetFromBottom 20 → shelf top 3.75 + 20 + 0.75 = 24.5
+    const cab: Carcass = {
+      ...defaultBookcase(),
+      id: "CAB",
+      position: { x: 0, z: 0 },
+      width: 30,
+      depth: 12,
+      height: 72,
+      toeKickHeight: 3,
+      shelves: [{ offsetFromBottom: 20, attachment: "pocket-screw" }],
+    };
+    const tote = {
+      ...defaultRefBox(),
+      id: "T",
+      position: { x: 0, z: 0 },
+      width: 10,
+      depth: 8,
+      baseHeight: 24.5,
+    };
+    const p = projectWith([cab], [], [tote]);
+    expect(dependentsOf(p, shelfSurfaceId("CAB", 0))).toEqual(["T"]);
+  });
+
+  it("returns transitive dependents: tote on runner on shelf", () => {
+    const cab: Carcass = {
+      ...defaultBookcase(),
+      id: "CAB",
+      position: { x: 0, z: 0 },
+      width: 40,
+      depth: 16,
+      height: 72,
+      toeKickHeight: 3,
+      shelves: [{ offsetFromBottom: 20, attachment: "pocket-screw" }],
+    };
+    // shelf top at 24.5; runner sits there
+    const runner = {
+      ...defaultRunner([]),
+      id: "R",
+      boardMaterialId: "ply-1.5",
+      position: { x: 0, z: 0 },
+      length: 30,
+      depth: 12,
+      baseHeight: 24.5,
+    };
+    // runner top at 24.5 + 1.5 = 26; tote sits on the runner
+    const tote = {
+      ...defaultRefBox(),
+      id: "T",
+      position: { x: 0, z: 0 },
+      width: 10,
+      depth: 8,
+      baseHeight: 26,
+    };
+    const p = projectWith([cab], [runner], [tote]);
+    const deps = dependentsOf(p, shelfSurfaceId("CAB", 0));
+    expect(new Set(deps)).toEqual(new Set(["R", "T"]));
+  });
+
+  it("excludes items at the wrong Y even with overlapping footprint", () => {
+    const cab: Carcass = {
+      ...defaultBookcase(),
+      id: "CAB",
+      position: { x: 0, z: 0 },
+      width: 30,
+      depth: 12,
+      height: 72,
+      toeKickHeight: 3,
+      shelves: [{ offsetFromBottom: 20, attachment: "pocket-screw" }],
+    };
+    const tote = {
+      ...defaultRefBox(),
+      id: "T",
+      position: { x: 0, z: 0 },
+      width: 10,
+      depth: 8,
+      baseHeight: 40, // not on the shelf at 24.5
+    };
+    const p = projectWith([cab], [], [tote]);
+    expect(dependentsOf(p, shelfSurfaceId("CAB", 0))).toEqual([]);
+  });
+
+  it("excludes items at the right Y but with non-overlapping footprint", () => {
+    const cab: Carcass = {
+      ...defaultBookcase(),
+      id: "CAB",
+      position: { x: 0, z: 0 },
+      width: 30,
+      depth: 12,
+      height: 72,
+      toeKickHeight: 3,
+      shelves: [{ offsetFromBottom: 20, attachment: "pocket-screw" }],
+    };
+    const tote = {
+      ...defaultRefBox(),
+      id: "T",
+      position: { x: 200, z: 0 }, // far away
+      width: 10,
+      depth: 8,
+      baseHeight: 24.5,
+    };
+    const p = projectWith([cab], [], [tote]);
+    expect(dependentsOf(p, shelfSurfaceId("CAB", 0))).toEqual([]);
+  });
+
+  it("a carcass support reports dependents resting on its top", () => {
+    const cab: Carcass = {
+      ...defaultBookcase(),
+      id: "CAB",
+      position: { x: 0, z: 0 },
+      width: 30,
+      depth: 12,
+      height: 30, // top at 30
+      baseHeight: 0,
+      shelves: [],
+    };
+    const tote = {
+      ...defaultRefBox(),
+      id: "T",
+      position: { x: 0, z: 0 },
+      width: 10,
+      depth: 8,
+      baseHeight: 30,
+    };
+    const p = projectWith([cab], [], [tote]);
+    expect(dependentsOf(p, "CAB")).toEqual(["T"]);
+  });
+
+  it("raising the carcass carries items on its shelves with it (carcass query includes shelf-resting items)", () => {
+    const cab: Carcass = {
+      ...defaultBookcase(),
+      id: "CAB",
+      position: { x: 0, z: 0 },
+      width: 30,
+      depth: 12,
+      height: 72,
+      toeKickHeight: 3,
+      shelves: [{ offsetFromBottom: 20, attachment: "pocket-screw" }],
+    };
+    const tote = {
+      ...defaultRefBox(),
+      id: "T",
+      position: { x: 0, z: 0 },
+      width: 10,
+      depth: 8,
+      baseHeight: 24.5, // on shelf 0
+    };
+    const p = projectWith([cab], [], [tote]);
+    // The tote rides up when the whole bookcase rises — it's a dependent
+    // of the carcass too, via the shelf-surface seeded into the search.
+    expect(dependentsOf(p, "CAB")).toEqual(["T"]);
   });
 });

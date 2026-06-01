@@ -19,7 +19,7 @@ import {
   RUNNER_PROFILES,
   myRoom,
 } from "../domain/defaults";
-import { evenlySpacedShelves } from "../domain/shelves";
+import { evenlySpacedShelves, isEvenlySpaced } from "../domain/shelves";
 import { buildProject } from "../geometry";
 import { snapHeight } from "../geometry/stacking";
 import { buildCutList } from "../cutlist";
@@ -28,6 +28,7 @@ import { buildBom } from "../bom/aggregate";
 import { checkCarcass, worstLevel } from "../domain/checks";
 import { checkRunnerSag } from "../domain/sag";
 import { Scene } from "../scene/Scene";
+import { resolveDrop, resolveShelfDrop } from "../scene/placement";
 import { PlanView } from "../scene/PlanView";
 import { roomInteriorPoint } from "../domain/room";
 import { fitRunnerToCarcasses } from "../geometry/group";
@@ -124,6 +125,8 @@ export default function App() {
         redo={hist.redo}
         canUndo={hist.canUndo}
         canRedo={hist.canRedo}
+        beginInteraction={hist.beginInteraction}
+        endInteraction={hist.endInteraction}
       />
       <SnapshotRecorder />
     </UnitsProvider>
@@ -137,6 +140,8 @@ function Workspace({
   redo,
   canUndo,
   canRedo,
+  beginInteraction,
+  endInteraction,
 }: {
   project: Project;
   setProject: (u: Project | ((p: Project) => Project)) => void;
@@ -144,11 +149,23 @@ function Workspace({
   redo: () => void;
   canUndo: boolean;
   canRedo: boolean;
+  beginInteraction: () => void;
+  endInteraction: () => void;
 }) {
   const { fmt } = useUnits();
   const view0 = useMemo(() => loadViewState(), []);
   const [sel, setSel] = useState<string>(view0.sel ?? "room");
-  const setSelId = setSel; // tree selection drives the inspector
+  const [subSel, setSubSel] = useState<{ kind: "shelf"; carcassId: string; idx: number } | null>(null);
+  // Selecting via tree/inspector clears subSel so the inspector view doesn't
+  // contradict a stale shelf focus.
+  const setSelId = (id: string) => {
+    setSubSel(null);
+    setSel(id);
+  };
+  const onSelectShelf = (carcassId: string, idx: number) => {
+    setSel(carcassId);
+    setSubSel({ kind: "shelf", carcassId, idx });
+  };
   const [collapse, setCollapse] = useState<Record<string, boolean>>({});
   const [tab, setTab] = useState<Tab>((view0.tab as Tab) ?? "3D");
   const [showDims, setShowDims] = useState(true);
@@ -710,6 +727,39 @@ function Workspace({
                 onChange={setShelfCount}
                 min={0}
               />
+              {selected.shelves.length > 0 &&
+                !isEvenlySpaced(selected, project.catalog) && (
+                  <div className="field" style={{ flexDirection: "column", alignItems: "stretch", gap: 4 }}>
+                    <span style={{ fontSize: 12, opacity: 0.8 }}>Custom spacing</span>
+                    {selected.shelves.map((s, i) => (
+                      <DimField
+                        key={i}
+                        label={`Shelf ${i + 1}`}
+                        value={s.offsetFromBottom}
+                        onChange={(v) =>
+                          setProject((pr) =>
+                            resolveShelfDrop(pr, selected.id, i, v).project,
+                          )
+                        }
+                      />
+                    ))}
+                    <button
+                      onClick={() => {
+                        const attach = selected.shelves[0]?.attachment ?? "pocket-screw";
+                        patchSelected({
+                          shelves: evenlySpacedShelves(
+                            selected,
+                            project.catalog,
+                            selected.shelves.length,
+                            attach,
+                          ),
+                        });
+                      }}
+                    >
+                      Re-space evenly
+                    </button>
+                  </div>
+                )}
               <SelectField
                 label="Shelf joinery"
                 value={selected.shelves[0]?.attachment ?? "pocket-screw"}
@@ -1212,7 +1262,30 @@ function Workspace({
                     onChange={(e) => setDollhouse(e.target.checked)}
                   />
                 </label>
-                <Scene project={project} dollhouse={dollhouse} />
+                <Scene
+                  project={project}
+                  dollhouse={dollhouse}
+                  sel={sel}
+                  subSel={subSel}
+                  onSelect={setSelId}
+                  onSelectShelf={onSelectShelf}
+                  onPatchEntity={(id, kind, patch) =>
+                    setProject((pr) =>
+                      resolveDrop(pr, kind, id, {
+                        x: patch.x,
+                        z: patch.z,
+                        y: patch.y,
+                      }).project,
+                    )
+                  }
+                  onPatchShelf={(carcassId, idx, newOffset) =>
+                    setProject((pr) =>
+                      resolveShelfDrop(pr, carcassId, idx, newOffset).project,
+                    )
+                  }
+                  onCommitHistory={beginInteraction}
+                  onEndInteraction={endInteraction}
+                />
               </div>
             )}
 

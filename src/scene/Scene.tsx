@@ -1,9 +1,9 @@
-import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { OrbitControls, GizmoHelper, GizmoViewport } from "@react-three/drei";
-import { useEffect, useMemo, useRef } from "react";
+import { Canvas, useFrame, useThree, type ThreeEvent } from "@react-three/fiber";
+import { OrbitControls, GizmoHelper, GizmoViewport, TransformControls } from "@react-three/drei";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { loadViewState, saveViewState } from "../ui/viewState";
-import type { Carcass, Person, Project, RefBox } from "../domain/types";
+import type { Carcass, Person, Project, RefBox, Runner } from "../domain/types";
 import { PERSON_SEAT_HEIGHT, personFootprint, personTopY } from "../domain/person";
 import { buildCarcass } from "../geometry/carcass";
 import { buildRunner } from "../geometry/runner";
@@ -11,10 +11,70 @@ import { surfaceUnderPoint } from "../geometry/stacking";
 import { frustumGeometry } from "./frustum";
 import { prismGeometry } from "./prism";
 import { wallFacesCamera, viewIsShallow } from "./dollhouse";
+import type { MovableKind } from "./placement";
 
 const _dir = new THREE.Vector3();
 import { roomReferenceSlabs, type RefSlab } from "../domain/room";
 import type { Part, PartRole } from "../geometry/types";
+
+/** Ref registry so MoveGizmo can attach to whichever group is selected.
+ *  Each movable group registers/unregisters itself by id. */
+type RefRegistry = {
+  register: (id: string, obj: THREE.Object3D | null) => void;
+  get: (id: string) => THREE.Object3D | null;
+};
+const RefRegistryCtx = createContext<RefRegistry | null>(null);
+
+/** Selection context — what's selected, how to select, how to patch on drop. */
+export interface PatchEntityArg {
+  /** desired baseHeight (Y); undefined for people or when only XZ moved */
+  y?: number;
+  x: number;
+  z: number;
+}
+export interface SubSel {
+  kind: "shelf";
+  carcassId: string;
+  idx: number;
+}
+interface SelectionCtxValue {
+  sel: string;
+  subSel: SubSel | null;
+  onSelect: (id: string) => void;
+  onSelectShelf: (carcassId: string, idx: number) => void;
+}
+const SelectionCtx = createContext<SelectionCtxValue>({
+  sel: "",
+  subSel: null,
+  onSelect: () => {},
+  onSelectShelf: () => {},
+});
+
+function useRegisterGroupRef(id: string, obj: THREE.Object3D | null) {
+  const reg = useContext(RefRegistryCtx);
+  useEffect(() => {
+    if (!reg) return;
+    reg.register(id, obj);
+    return () => reg.register(id, null);
+  }, [reg, id, obj]);
+}
+
+/** Module-level flag flipped while the move gizmo is being dragged. R3F's
+ *  scene-level event system delivers pointerdowns to whatever mesh is behind
+ *  the gizmo arrow, so without this guard, grabbing a gizmo handle that sits
+ *  over a different item would steal selection mid-drag. */
+const gizmoBusy = { current: false };
+
+/** Click handler factory: select this id on pointerdown and stop the event so
+ *  it doesn't also fire the deselect plane behind us. Skips when the gizmo
+ *  is mid-drag. */
+function selectHandler(id: string, onSelect: (id: string) => void) {
+  return (e: ThreeEvent<PointerEvent>) => {
+    if (gizmoBusy.current) return;
+    e.stopPropagation();
+    onSelect(id);
+  };
+}
 
 const ROLE_COLOR: Record<PartRole, string> = {
   side: "#c8a877",
@@ -35,7 +95,13 @@ function allFinite(...vs: number[]): boolean {
   return true;
 }
 
-function PartMesh({ part }: { part: Part }) {
+function PartMesh({
+  part,
+  onPointerDown,
+}: {
+  part: Part;
+  onPointerDown?: (e: ThreeEvent<PointerEvent>) => void;
+}) {
   if (
     !allFinite(
       part.box.x,
@@ -57,7 +123,11 @@ function PartMesh({ part }: { part: Part }) {
     return null;
   }
   return (
-    <mesh position={[part.center.x, part.center.y, part.center.z]} castShadow>
+    <mesh
+      position={[part.center.x, part.center.y, part.center.z]}
+      castShadow
+      onPointerDown={onPointerDown}
+    >
       <boxGeometry args={[part.box.x, part.box.y, part.box.z]} />
       <meshStandardMaterial color={ROLE_COLOR[part.role]} />
     </mesh>
@@ -75,6 +145,9 @@ function CarcassGroup({
     () => buildCarcass(carcass, project.catalog).parts,
     [carcass, project.catalog],
   );
+  const { sel, onSelect, onSelectShelf } = useContext(SelectionCtx);
+  const ref = useRef<THREE.Group>(null);
+  useRegisterGroupRef(carcass.id, ref.current);
   const px = carcass.position.x;
   const py = carcass.baseHeight ?? 0;
   const pz = carcass.position.z;
@@ -88,17 +161,65 @@ function CarcassGroup({
     });
     return null;
   }
+  // Index shelf parts in the order they appear (matches `carcass.shelves` order).
+  let shelfCount = 0;
   return (
     <group
+      ref={ref}
       position={[px, py, pz]}
-      // negate so 3D matches the Plan view: positive rotationDeg appears as a
-      // clockwise turn (top-down), with the open front ending where Plan
-      // shows it after the same rotation.
       rotation={[0, (-carcass.rotationDeg * Math.PI) / 180, 0]}
+      onPointerDown={selectHandler(carcass.id, onSelect)}
+    >
+      {parts.map((p) => {
+        if (p.role === "shelf") {
+          const idx = shelfCount++;
+          return (
+            <PartMesh
+              key={p.id}
+              part={p}
+              onPointerDown={(e: ThreeEvent<PointerEvent>) => {
+                if (gizmoBusy.current) return;
+                e.stopPropagation();
+                onSelectShelf(carcass.id, idx);
+              }}
+            />
+          );
+        }
+        return <PartMesh key={p.id} part={p} />;
+      })}
+      {sel === carcass.id && <SelectionOutline />}
+    </group>
+  );
+}
+
+function RunnerGroup({ r, parts }: { r: Runner; parts: Part[] }) {
+  const { sel, onSelect } = useContext(SelectionCtx);
+  const ref = useRef<THREE.Group>(null);
+  useRegisterGroupRef(r.id, ref.current);
+  const px = r.position.x;
+  const py = r.baseHeight ?? 0;
+  const pz = r.position.z;
+  if (!allFinite(px, py, pz, r.rotationDeg)) {
+    console.warn("Skipping runner with non-finite transform", {
+      id: r.id,
+      label: r.label,
+      position: r.position,
+      baseHeight: r.baseHeight,
+      rotationDeg: r.rotationDeg,
+    });
+    return null;
+  }
+  return (
+    <group
+      ref={ref}
+      position={[px, py, pz]}
+      rotation={[0, (-r.rotationDeg * Math.PI) / 180, 0]}
+      onPointerDown={selectHandler(r.id, onSelect)}
     >
       {parts.map((p) => (
         <PartMesh key={p.id} part={p} />
       ))}
+      {sel === r.id && <SelectionOutline />}
     </group>
   );
 }
@@ -117,38 +238,18 @@ function RunnerMeshes({ project }: { project: Project }) {
   );
   return (
     <>
-      {groups.map(({ r, parts }) => {
-        const px = r.position.x;
-        const py = r.baseHeight ?? 0;
-        const pz = r.position.z;
-        if (!allFinite(px, py, pz, r.rotationDeg)) {
-          console.warn("Skipping runner with non-finite transform", {
-            id: r.id,
-            label: r.label,
-            position: r.position,
-            baseHeight: r.baseHeight,
-            rotationDeg: r.rotationDeg,
-          });
-          return null;
-        }
-        return (
-          <group
-            key={r.id}
-            position={[px, py, pz]}
-            rotation={[0, (-r.rotationDeg * Math.PI) / 180, 0]}
-          >
-            {parts.map((p) => (
-              <PartMesh key={p.id} part={p} />
-            ))}
-          </group>
-        );
-      })}
+      {groups.map(({ r, parts }) => (
+        <RunnerGroup key={r.id} r={r} parts={parts} />
+      ))}
     </>
   );
 }
 
 function ToteMesh({ b }: { b: RefBox }) {
   const tapered = b.topWidth != null && b.topDepth != null;
+  const { sel, onSelect } = useContext(SelectionCtx);
+  const ref = useRef<THREE.Group>(null);
+  useRegisterGroupRef(b.id, ref.current);
   const geom = useMemo(() => {
     if (!tapered) return null;
     const { positions, indices } = frustumGeometry(
@@ -165,11 +266,15 @@ function ToteMesh({ b }: { b: RefBox }) {
     return g;
   }, [tapered, b.width, b.depth, b.topWidth, b.topDepth, b.height]);
 
-  const px = b.position.x;
-  const py = (b.baseHeight ?? 0) + b.height / 2;
-  const pz = b.position.z;
+  // Group at the tote's bottom-center; mesh offset up by height/2 keeps the
+  // existing render appearance unchanged. Gizmo binds to the group, so its
+  // origin sits at the tote's footprint center, which matches the entity's
+  // (position.x, baseHeight, position.z) and round-trips cleanly.
+  const gx = b.position.x;
+  const gy = b.baseHeight ?? 0;
+  const gz = b.position.z;
   if (
-    !allFinite(px, py, pz, b.width, b.height, b.depth, b.rotationDeg) ||
+    !allFinite(gx, gy, gz, b.width, b.height, b.depth, b.rotationDeg) ||
     (tapered &&
       !allFinite(b.topWidth as number, b.topDepth as number))
   ) {
@@ -177,17 +282,24 @@ function ToteMesh({ b }: { b: RefBox }) {
     return null;
   }
   return (
-    <mesh
-      position={[px, py, pz]}
+    <group
+      ref={ref}
+      position={[gx, gy, gz]}
       rotation={[0, (-b.rotationDeg * Math.PI) / 180, 0]}
-      geometry={geom ?? undefined}
+      onPointerDown={selectHandler(b.id, onSelect)}
     >
-      {!tapered && <boxGeometry args={[b.width, b.height, b.depth]} />}
-      <meshStandardMaterial
-        color="#5fa8d3"
-        side={THREE.DoubleSide}
-      />
-    </mesh>
+      <mesh
+        position={[0, b.height / 2, 0]}
+        geometry={geom ?? undefined}
+      >
+        {!tapered && <boxGeometry args={[b.width, b.height, b.depth]} />}
+        <meshStandardMaterial
+          color="#5fa8d3"
+          side={THREE.DoubleSide}
+        />
+      </mesh>
+      {sel === b.id && <SelectionOutline />}
+    </group>
   );
 }
 
@@ -198,49 +310,55 @@ function PersonMesh({ p }: { p: Person }) {
   const color = "#8aa0a8";
   const opacity = 0.55;
   const base = p.baseHeight ?? 0;
-  // negate rotation so 3D matches Plan (see PlanView/SVG rotate convention)
   const rotY = (-p.rotationDeg * Math.PI) / 180;
+  const { sel, onSelect } = useContext(SelectionCtx);
+  const ref = useRef<THREE.Group>(null);
+  useRegisterGroupRef(p.id, ref.current);
   if (
     !allFinite(p.position.x, p.position.z, base, p.height, fp.width, fp.depth)
   ) {
     console.warn("Skipping person with non-finite dims/position", p);
     return null;
   }
+  const click = selectHandler(p.id, onSelect);
   if (p.pose === "sitting") {
     const seat = PERSON_SEAT_HEIGHT;
-    const headTop = personTopY(p) - PERSON_SEAT_HEIGHT; // height of torso above seat
-    // torso: a slimmer block at the back of the footprint (depth = body, ~10")
+    const headTop = personTopY(p) - PERSON_SEAT_HEIGHT;
     const torsoD = 10;
-    const torsoOffsetZ = -(fp.depth / 2 - torsoD / 2); // sit at the BACK of the footprint
+    const torsoOffsetZ = -(fp.depth / 2 - torsoD / 2);
     return (
       <group
+        ref={ref}
         position={[p.position.x, base, p.position.z]}
         rotation={[0, rotY, 0]}
+        onPointerDown={click}
       >
         <mesh position={[0, seat + headTop / 2, torsoOffsetZ]}>
           <boxGeometry args={[fp.width, headTop, torsoD]} />
           <meshStandardMaterial color={color} transparent opacity={opacity} />
         </mesh>
-        {/* thighs/lap from torso forward to the front of the footprint */}
         <mesh
           position={[0, seat - 4 / 2, (fp.depth - torsoD) / 2 - torsoD / 2]}
         >
           <boxGeometry args={[fp.width - 4, 4, fp.depth - torsoD]} />
           <meshStandardMaterial color={color} transparent opacity={opacity} />
         </mesh>
+        {sel === p.id && <SelectionOutline />}
       </group>
     );
   }
-  // standing: a single block running the full height
   return (
     <group
+      ref={ref}
       position={[p.position.x, base, p.position.z]}
       rotation={[0, rotY, 0]}
+      onPointerDown={click}
     >
       <mesh position={[0, p.height / 2, 0]}>
         <boxGeometry args={[fp.width, p.height, fp.depth]} />
         <meshStandardMaterial color={color} transparent opacity={opacity} />
       </mesh>
+      {sel === p.id && <SelectionOutline />}
     </group>
   );
 }
@@ -383,38 +501,456 @@ function CameraPersistence() {
   return null;
 }
 
+/** Thin yellow box drawn around the selected group's bounding box. Uses a
+ *  Three BoxHelper applied to the parent group on mount — no need for the
+ *  parent to pass in known dimensions. */
+function SelectionOutline() {
+  const ref = useRef<THREE.LineSegments>(null);
+  const box = useMemo(() => new THREE.Box3(), []);
+  useFrame(() => {
+    const line = ref.current;
+    if (!line || !line.parent) return;
+    const parent = line.parent;
+    box.setFromObject(parent);
+    if (box.isEmpty()) {
+      line.visible = false;
+      return;
+    }
+    line.visible = true;
+    // Build edges in parent-local space: subtract parent world translation,
+    // then re-rotate into local. Easier: use BoxHelper-style line on a fresh
+    // BufferGeometry sized to the local-frame bbox computed by clearing the
+    // parent's matrix during the measure. Simpler still: measure in world,
+    // place the line at world center with no rotation, by detaching it from
+    // the parent transform via attach. Keep it simple: take the world bbox
+    // and render a flat box at world coords by re-parenting visually.
+    const sz = new THREE.Vector3();
+    const center = new THREE.Vector3();
+    box.getSize(sz);
+    box.getCenter(center);
+    // Convert center to parent-local position
+    const local = parent.worldToLocal(center.clone());
+    line.position.copy(local);
+    // Cancel out parent rotation so the box stays axis-aligned in world
+    const q = new THREE.Quaternion();
+    parent.getWorldQuaternion(q);
+    line.quaternion.copy(q.invert());
+    line.scale.set(sz.x, sz.y, sz.z);
+  });
+  const geom = useMemo(
+    () => new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1)),
+    [],
+  );
+  return (
+    // eslint-disable-next-line react/no-unknown-property
+    <lineSegments ref={ref} geometry={geom} renderOrder={999}>
+      <lineBasicMaterial color="#ffd166" depthTest={false} transparent opacity={0.95} />
+    </lineSegments>
+  );
+}
+
+/** Invisible floor plane that catches pointer-downs in empty space and
+ *  deselects. Sized far larger than the room so it always covers the camera
+ *  frustum at ground level. */
+function DeselectPlane({ span, onSelect }: { span: number; onSelect: (id: string) => void }) {
+  const size = Math.max(span * 4, 1000);
+  return (
+    <mesh
+      rotation={[-Math.PI / 2, 0, 0]}
+      position={[0, -0.01, 0]}
+      onPointerDown={(e) => {
+        if (gizmoBusy.current) return;
+        e.stopPropagation();
+        onSelect("");
+      }}
+      renderOrder={-10}
+    >
+      <planeGeometry args={[size, size]} />
+      <meshBasicMaterial visible={false} />
+    </mesh>
+  );
+}
+
+/** Translate-mode gizmo bound to whichever group matches `sel`. Disables
+ *  OrbitControls while dragging. On release, reads the group's local position
+ *  and dispatches a patch through `onPatchEntity`. */
+/** Reads the latest entity position from the current project. Used so the
+ *  drag proxy can re-sync when an external change happens (or the drag ends)
+ *  without coupling the gizmo to React state updates mid-drag. */
+function entityPos(
+  project: Project,
+  kind: MovableKind,
+  id: string,
+): { x: number; y: number; z: number } | null {
+  if (kind === "carcass") {
+    const c = project.carcasses.find((k) => k.id === id);
+    return c ? { x: c.position.x, y: c.baseHeight ?? 0, z: c.position.z } : null;
+  }
+  if (kind === "runner") {
+    const r = project.runners.find((k) => k.id === id);
+    return r ? { x: r.position.x, y: r.baseHeight ?? 0, z: r.position.z } : null;
+  }
+  if (kind === "refBox") {
+    const b = project.refBoxes.find((k) => k.id === id);
+    return b ? { x: b.position.x, y: b.baseHeight ?? 0, z: b.position.z } : null;
+  }
+  const p = project.people.find((k) => k.id === id);
+  return p ? { x: p.position.x, y: p.baseHeight ?? 0, z: p.position.z } : null;
+}
+
+/** World-space Y of a shelf's top surface, derived from the project tree. */
+function shelfWorldY(
+  project: Project,
+  carcassId: string,
+  shelfIdx: number,
+): { x: number; y: number; z: number } | null {
+  const c = project.carcasses.find((x) => x.id === carcassId);
+  if (!c) return null;
+  const sh = c.shelves[shelfIdx];
+  if (!sh) return null;
+  // Use the same datum chain as carcass build: interiorFloor = baseHeight +
+  // toeKick + carcass thickness; shelf top = interiorFloor + offset + shelfT.
+  // Look up thicknesses through the catalog.
+  const carcassMat = project.catalog.materials.find((m) => m.id === c.carcassMaterialId);
+  const shelfMat = project.catalog.materials.find((m) => m.id === c.shelfMaterialId);
+  if (!carcassMat || !shelfMat) return null;
+  const interiorFloor = (c.baseHeight ?? 0) + c.toeKickHeight + carcassMat.thickness;
+  const y = interiorFloor + sh.offsetFromBottom + shelfMat.thickness;
+  return { x: c.position.x, y, z: c.position.z };
+}
+
+function MoveGizmo({
+  project,
+  sel,
+  subSel,
+  kind,
+  onPatchEntity,
+  onPatchShelf,
+  onCommitHistory,
+  onEndInteraction,
+}: {
+  project: Project;
+  sel: string;
+  subSel: SubSel | null;
+  kind: MovableKind | null;
+  onPatchEntity: (id: string, kind: MovableKind, patch: PatchEntityArg) => void;
+  onPatchShelf: (carcassId: string, idx: number, newOffsetFromBottom: number) => void;
+  onCommitHistory: () => void;
+  onEndInteraction: () => void;
+}) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const orbit = useThree((s) => s.controls) as any;
+  const gl = useThree((s) => s.gl);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const tcRef = useRef<any>(null);
+  const draggingRef = useRef(false);
+  const projectRef = useRef(project);
+  projectRef.current = project;
+  const subSelRef = useRef(subSel);
+  subSelRef.current = subSel;
+  const kindRef = useRef<MovableKind | null>(kind);
+  kindRef.current = kind;
+  const selRef = useRef(sel);
+  selRef.current = sel;
+
+  // Invisible proxy: gizmo writes here, we read it and route through the
+  // resolver. The scene group's actual position is driven by project state.
+  const proxy = useMemo(() => new THREE.Object3D(), []);
+
+  // Pick the right "current position" source based on mode.
+  const getCurrentTarget = useCallback((): { x: number; y: number; z: number } | null => {
+    const sub = subSelRef.current;
+    if (sub && sub.kind === "shelf") {
+      return shelfWorldY(projectRef.current, sub.carcassId, sub.idx);
+    }
+    const k = kindRef.current;
+    const id = selRef.current;
+    if (!k || !id) return null;
+    return entityPos(projectRef.current, k, id);
+  }, []);
+
+  // Re-sync the proxy when selection / project state changes outside a drag.
+  useEffect(() => {
+    if (draggingRef.current) return;
+    const cur = getCurrentTarget();
+    if (!cur) return;
+    proxy.position.set(cur.x, cur.y, cur.z);
+  }, [project, sel, subSel, kind, proxy, getCurrentTarget]);
+
+  // Capture-phase listener: when user presses on a gizmo handle, suppress
+  // SelectableGroup's onPointerDown so it doesn't steal selection.
+  useEffect(() => {
+    const dom = gl.domElement;
+    const onDown = () => {
+      const tc = tcRef.current;
+      if (tc && tc.axis) gizmoBusy.current = true;
+    };
+    const onUp = () => {
+      setTimeout(() => { gizmoBusy.current = false; }, 0);
+    };
+    dom.addEventListener("pointerdown", onDown, { capture: true });
+    window.addEventListener("pointerup", onUp, { capture: true });
+    return () => {
+      dom.removeEventListener("pointerdown", onDown, { capture: true });
+      window.removeEventListener("pointerup", onUp, { capture: true });
+    };
+  }, [gl]);
+
+  const isShelf = subSel?.kind === "shelf";
+  const visible = isShelf || (!!sel && !!kind);
+  if (!visible) return null;
+
+  return (
+    <>
+      <primitive object={proxy} />
+      <TransformControls
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ref={tcRef as any}
+        object={proxy}
+        mode="translate"
+        size={0.75}
+        translationSnap={1}
+        // Shelf: Y-only. Person: hide Y. Otherwise: all axes.
+        showX={!isShelf && kind !== null}
+        showY={isShelf || (kind !== null && kind !== "person")}
+        showZ={!isShelf && kind !== null}
+        onMouseDown={() => {
+          draggingRef.current = true;
+          gizmoBusy.current = true;
+          if (orbit) orbit.enabled = false;
+          const cur = getCurrentTarget();
+          if (cur) proxy.position.set(cur.x, cur.y, cur.z);
+          onCommitHistory();
+        }}
+        onObjectChange={() => {
+          if (!draggingRef.current) return;
+          const sub = subSelRef.current;
+          const p = proxy.position;
+          if (sub && sub.kind === "shelf") {
+            // Convert the proxy's world Y back to an offsetFromBottom.
+            const c = projectRef.current.carcasses.find((x) => x.id === sub.carcassId);
+            if (!c) return;
+            const carcassMat = projectRef.current.catalog.materials.find((m) => m.id === c.carcassMaterialId);
+            const shelfMat = projectRef.current.catalog.materials.find((m) => m.id === c.shelfMaterialId);
+            if (!carcassMat || !shelfMat) return;
+            const interiorFloor = (c.baseHeight ?? 0) + c.toeKickHeight + carcassMat.thickness;
+            const newOffset = p.y - interiorFloor - shelfMat.thickness;
+            onPatchShelf(sub.carcassId, sub.idx, newOffset);
+            return;
+          }
+          const k = kindRef.current;
+          const id = selRef.current;
+          if (!k || !id) return;
+          onPatchEntity(id, k, {
+            x: p.x,
+            z: p.z,
+            y: k === "person" ? undefined : p.y,
+          });
+        }}
+        onMouseUp={() => {
+          if (!draggingRef.current) return;
+          draggingRef.current = false;
+          if (orbit) orbit.enabled = true;
+          const cur = getCurrentTarget();
+          if (cur) proxy.position.set(cur.x, cur.y, cur.z);
+          onEndInteraction();
+        }}
+      />
+    </>
+  );
+}
+
+const NUDGE_DEFAULT = 1;
+const NUDGE_FINE = 0.125;
+const NUDGE_COARSE = 6;
+
+/** Window keydown handler: arrows nudge the selected entity. Skips if a text
+ *  input has focus so typing dimensions in the inspector isn't intercepted. */
+function KeyboardNudge({
+  sel,
+  kind,
+  resolve,
+  onPatchEntity,
+  onSelect,
+}: {
+  sel: string;
+  kind: MovableKind | null;
+  resolve: (id: string, kind: MovableKind) => { x: number; z: number; y: number } | null;
+  onPatchEntity: (id: string, kind: MovableKind, patch: PatchEntityArg) => void;
+  onSelect: (id: string) => void;
+}) {
+  useEffect(() => {
+    if (!sel || !kind) return;
+    const onKey = (e: KeyboardEvent) => {
+      const ae = document.activeElement as HTMLElement | null;
+      if (ae) {
+        const tag = ae.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || ae.isContentEditable) return;
+      }
+      if (e.key === "Escape") {
+        onSelect("");
+        e.preventDefault();
+        return;
+      }
+      const isArrow =
+        e.key === "ArrowLeft" || e.key === "ArrowRight" ||
+        e.key === "ArrowUp" || e.key === "ArrowDown";
+      if (!isArrow) return;
+      const step = e.altKey
+        ? (e.shiftKey ? NUDGE_COARSE : NUDGE_FINE)
+        : (e.shiftKey ? NUDGE_COARSE : NUDGE_DEFAULT);
+      const cur = resolve(sel, kind);
+      if (!cur) return;
+      let { x, y, z } = cur;
+      const verticalY = e.shiftKey && (e.key === "ArrowUp" || e.key === "ArrowDown");
+      if (verticalY && kind !== "person") {
+        if (e.key === "ArrowUp") y += step;
+        else y -= step;
+      } else if (e.key === "ArrowLeft") x -= step;
+      else if (e.key === "ArrowRight") x += step;
+      else if (e.key === "ArrowUp") z -= step;
+      else if (e.key === "ArrowDown") z += step;
+      onPatchEntity(sel, kind, { x, z, y: kind === "person" ? undefined : y });
+      e.preventDefault();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [sel, kind, resolve, onPatchEntity, onSelect]);
+  return null;
+}
+
 export function Scene({
   project,
   dollhouse = true,
+  sel = "",
+  subSel = null,
+  onSelect = () => {},
+  onSelectShelf = () => {},
+  onPatchEntity = () => {},
+  onPatchShelf = () => {},
+  onCommitHistory = () => {},
+  onEndInteraction = () => {},
 }: {
   project: Project;
   dollhouse?: boolean;
+  sel?: string;
+  /** Sub-selection inside the selected carcass (e.g. a specific shelf). */
+  subSel?: SubSel | null;
+  onSelect?: (id: string) => void;
+  /** Sets sel to carcassId and subSel to { shelf, idx }. */
+  onSelectShelf?: (carcassId: string, idx: number) => void;
+  onPatchEntity?: (id: string, kind: MovableKind, patch: PatchEntityArg) => void;
+  /** Patch a shelf's offsetFromBottom (stack-follow runs in the resolver). */
+  onPatchShelf?: (carcassId: string, idx: number, newOffsetFromBottom: number) => void;
+  /** Called once at the start of a gizmo drag so subsequent per-frame
+   *  patches coalesce into a single history entry. */
+  onCommitHistory?: () => void;
+  /** Called on drag release so a brand-new edit after the drag becomes its
+   *  own history entry instead of merging in. */
+  onEndInteraction?: () => void;
 }) {
   const span = Math.max(
     project.room.length,
     project.room.width,
     project.room.ceilingHeight,
   );
+
+  // Ref registry: each movable group registers its <group> by id so the
+  // gizmo can attach to whichever id matches `sel`. We use a state Map so
+  // that registration changes trigger a re-render and the gizmo binds as
+  // soon as the group mounts.
+  const [refMap, setRefMap] = useState<Map<string, THREE.Object3D>>(new Map());
+  const registry = useMemo<RefRegistry>(
+    () => ({
+      register: (id, obj) => {
+        setRefMap((prev) => {
+          const next = new Map(prev);
+          if (obj) next.set(id, obj);
+          else next.delete(id);
+          return next;
+        });
+      },
+      get: (id) => refMap.get(id) ?? null,
+    }),
+    [refMap],
+  );
+
+  const kind: MovableKind | null = useMemo(() => {
+    if (!sel) return null;
+    if (project.carcasses.some((c) => c.id === sel)) return "carcass";
+    if (project.runners.some((r) => r.id === sel)) return "runner";
+    if (project.refBoxes.some((b) => b.id === sel)) return "refBox";
+    if (project.people.some((p) => p.id === sel)) return "person";
+    return null;
+  }, [sel, project.carcasses, project.runners, project.refBoxes, project.people]);
+
+  const resolveCurrent = useCallback(
+    (id: string, k: MovableKind) => {
+      if (k === "carcass") {
+        const c = project.carcasses.find((x) => x.id === id);
+        return c ? { x: c.position.x, z: c.position.z, y: c.baseHeight ?? 0 } : null;
+      }
+      if (k === "runner") {
+        const r = project.runners.find((x) => x.id === id);
+        return r ? { x: r.position.x, z: r.position.z, y: r.baseHeight ?? 0 } : null;
+      }
+      if (k === "refBox") {
+        const b = project.refBoxes.find((x) => x.id === id);
+        return b ? { x: b.position.x, z: b.position.z, y: b.baseHeight ?? 0 } : null;
+      }
+      const p = project.people.find((x) => x.id === id);
+      return p ? { x: p.position.x, z: p.position.z, y: p.baseHeight ?? 0 } : null;
+    },
+    [project.carcasses, project.runners, project.refBoxes, project.people],
+  );
+
+  const selectionCtx = useMemo(
+    () => ({ sel, subSel, onSelect, onSelectShelf }),
+    [sel, subSel, onSelect, onSelectShelf],
+  );
+
   return (
     <Canvas
       shadows
       camera={{ position: [span * 0.9, span * 0.8, span * 1.1], fov: 45 }}
       style={{ background: "#1b1b1f" }}
     >
-      <ambientLight intensity={0.6} />
-      <directionalLight position={[100, 200, 120]} intensity={1.1} castShadow />
-      <RoomShell project={project} dollhouse={dollhouse} />
-      {project.carcasses.map((c) => (
-        <CarcassGroup key={c.id} carcass={c} project={project} />
-      ))}
-      <RunnerMeshes project={project} />
-      <RefBoxes project={project} />
-      <People project={project} />
-      <OrbitControls makeDefault target={[0, project.room.ceilingHeight / 3, 0]} />
-      <CameraPersistence />
-      <GizmoHelper alignment="bottom-right" margin={[64, 64]}>
-        <GizmoViewport labelColor="white" axisHeadScale={1} />
-      </GizmoHelper>
+      <RefRegistryCtx.Provider value={registry}>
+        <SelectionCtx.Provider value={selectionCtx}>
+          <ambientLight intensity={0.6} />
+          <directionalLight position={[100, 200, 120]} intensity={1.1} castShadow />
+          <RoomShell project={project} dollhouse={dollhouse} />
+          {project.carcasses.map((c) => (
+            <CarcassGroup key={c.id} carcass={c} project={project} />
+          ))}
+          <RunnerMeshes project={project} />
+          <RefBoxes project={project} />
+          <People project={project} />
+          <DeselectPlane span={span} onSelect={onSelect} />
+          <MoveGizmo
+            project={project}
+            sel={sel}
+            subSel={subSel}
+            kind={kind}
+            onPatchEntity={onPatchEntity}
+            onPatchShelf={onPatchShelf}
+            onCommitHistory={onCommitHistory}
+            onEndInteraction={onEndInteraction}
+          />
+          <KeyboardNudge
+            sel={sel}
+            kind={kind}
+            resolve={resolveCurrent}
+            onPatchEntity={onPatchEntity}
+            onSelect={onSelect}
+          />
+          <OrbitControls makeDefault target={[0, project.room.ceilingHeight / 3, 0]} />
+          <CameraPersistence />
+          <GizmoHelper alignment="bottom-right" margin={[64, 64]}>
+            <GizmoViewport labelColor="white" axisHeadScale={1} />
+          </GizmoHelper>
+        </SelectionCtx.Provider>
+      </RefRegistryCtx.Provider>
     </Canvas>
   );
 }
