@@ -58,14 +58,16 @@ export function pocketHoleMarks(
 /**
  * Which face of a horizontal/rail part should the pocket entrance sit on?
  *
- * Real woodworking convention: drill pocket screws from the **inside-of-
- * carcass** face so the heads are hidden when the carcass is assembled.
- *  - Top panel: pockets on the underside (-y).
- *  - Bottom panel: pockets on the topside (+y).
+ * Real woodworking convention: drill pocket screws from a hidden,
+ * easy-to-access face so the heads don't show on finished surfaces.
+ *  - Top panel: pockets on the underside (-y) — hidden when assembled.
+ *  - Bottom panel: pockets on the underside (-y) — also hidden, and the
+ *    same drilling orientation as the top makes the workflow consistent.
  *  - Shelf: pockets on the underside (-y) — heads hidden from above.
- *  - Toe-kick rail: pockets on the back-facing face. The toe-kick part
- *    sits at the front of the carcass with `box.z = thickness`, so its
- *    back face is `+z`.
+ *  - Toe-kick rail: pockets on the inside-facing face (-z), which faces
+ *    into the carcass cavity. (The toe-kick sits at the front of the
+ *    carcass with `center.z ≈ D/2 - t/2`, so its inside face is -z and
+ *    the visible outside face is +z.)
  *
  * Returns the outward normal of that face (a unit vector). Returns null
  * for roles we don't support pocket-drilling on (sides, back, etc.) —
@@ -75,13 +77,11 @@ export function pocketHoleMarks(
 function entranceFaceNormal(role: PartRole): { x: number; y: number; z: number } | null {
   switch (role) {
     case "top":
-      return { x: 0, y: -1, z: 0 };
     case "bottom":
-      return { x: 0, y: 1, z: 0 };
     case "shelf":
       return { x: 0, y: -1, z: 0 };
     case "toe-kick":
-      return { x: 0, y: 0, z: 1 };
+      return { x: 0, y: 0, z: -1 };
     default:
       return null;
   }

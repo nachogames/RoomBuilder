@@ -104,7 +104,7 @@ describe("pocketHoleMarks face mapping", () => {
     }
   });
 
-  it("bottom panel marks sit on the topside (+y) of the bottom", () => {
+  it("bottom panel marks sit on the underside (-y) of the bottom", () => {
     const c = defaultBookcase();
     const cat = defaultCatalog();
     const g = buildCarcass(c, cat);
@@ -120,10 +120,10 @@ describe("pocketHoleMarks face mapping", () => {
     const bMarks = marks.filter((m) => m.jointId === bottomJoint.id);
     expect(bMarks.length).toBeGreaterThan(0);
 
-    const topside = bottomPart.center.y + bottomPart.box.y / 2;
+    const underside = bottomPart.center.y - bottomPart.box.y / 2;
     for (const m of bMarks) {
-      expect(m.center.y).toBeCloseTo(topside, 5);
-      expect(m.normal.y).toBeCloseTo(1, 5);
+      expect(m.center.y).toBeCloseTo(underside, 5);
+      expect(m.normal.y).toBeCloseTo(-1, 5);
     }
   });
 
