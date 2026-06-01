@@ -44,3 +44,76 @@ describe("pocketHoleMarks (default bookcase)", () => {
     }
   });
 });
+
+describe("pocketHoleMarks face mapping", () => {
+  it("left-edge marks sit on the part's -x face, normal -x", () => {
+    const c = defaultBookcase();
+    const cat = defaultCatalog();
+    const g = buildCarcass(c, cat);
+    const marks = pocketHoleMarks(g.parts, g.joints, cat);
+
+    // Pick a left-edge joint on the Top
+    const leftTopJoint = g.joints.find(
+      (j) =>
+        j.method === "pocket-screw" &&
+        j.drilledPartId !== undefined &&
+        j.drilledEdge === "left" &&
+        j.label.startsWith("Top"),
+    )!;
+    const topPart = g.parts.find((p) => p.id === leftTopJoint.drilledPartId)!;
+    const leftMarks = marks.filter((m) => m.jointId === leftTopJoint.id);
+    expect(leftMarks.length).toBeGreaterThan(0);
+
+    for (const m of leftMarks) {
+      // Entrance plane is at the part's -x face (carcass-local).
+      expect(m.center.x).toBeCloseTo(topPart.center.x - topPart.box.x / 2, 5);
+      // Outward normal points -x
+      expect(m.normal.x).toBeCloseTo(-1, 5);
+      expect(m.normal.y).toBeCloseTo(0, 5);
+      expect(m.normal.z).toBeCloseTo(0, 5);
+    }
+  });
+
+  it("right-edge marks sit on the part's +x face, normal +x", () => {
+    const c = defaultBookcase();
+    const cat = defaultCatalog();
+    const g = buildCarcass(c, cat);
+    const marks = pocketHoleMarks(g.parts, g.joints, cat);
+
+    const rightTopJoint = g.joints.find(
+      (j) =>
+        j.method === "pocket-screw" &&
+        j.drilledPartId !== undefined &&
+        j.drilledEdge === "right" &&
+        j.label.startsWith("Top"),
+    )!;
+    const topPart = g.parts.find((p) => p.id === rightTopJoint.drilledPartId)!;
+    const rightMarks = marks.filter((m) => m.jointId === rightTopJoint.id);
+
+    for (const m of rightMarks) {
+      expect(m.center.x).toBeCloseTo(topPart.center.x + topPart.box.x / 2, 5);
+      expect(m.normal.x).toBeCloseTo(1, 5);
+    }
+  });
+
+  it("hole z positions span the depth across the part width", () => {
+    const c = defaultBookcase();
+    const cat = defaultCatalog();
+    const g = buildCarcass(c, cat);
+    const marks = pocketHoleMarks(g.parts, g.joints, cat);
+
+    const leftTopJoint = g.joints.find(
+      (j) =>
+        j.drilledEdge === "left" && j.label.startsWith("Top"),
+    )!;
+    const topPart = g.parts.find((p) => p.id === leftTopJoint.drilledPartId)!;
+    const leftMarks = marks.filter((m) => m.jointId === leftTopJoint.id);
+
+    const zMin = topPart.center.z - topPart.box.z / 2;
+    const zMax = topPart.center.z + topPart.box.z / 2;
+    for (const m of leftMarks) {
+      expect(m.center.z).toBeGreaterThanOrEqual(zMin - 1e-6);
+      expect(m.center.z).toBeLessThanOrEqual(zMax + 1e-6);
+    }
+  });
+});

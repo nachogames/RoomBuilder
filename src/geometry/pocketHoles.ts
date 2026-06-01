@@ -46,18 +46,47 @@ export function pocketHoleMarks(
   return out;
 }
 
+/** Place one pocket hole on the drilled face of `part`.
+ *  `posAlongEdge` is the offset along the in-face axis (z for left/right
+ *  edges, x for top/bottom edges) starting from the lower-coord end of
+ *  that axis. */
 function markForPosition(
   part: Part,
   jointId: string,
-  _edge: DrilledEdge,
-  _posAlongEdge: number,
+  edge: DrilledEdge,
+  posAlongEdge: number,
 ): PocketHoleMark {
-  // Placeholder: all geometry zeros — face mapping comes in the next task.
+  const cx = part.center.x;
+  const cy = part.center.y;
+  const cz = part.center.z;
+  const hx = part.box.x / 2;
+  const hz = part.box.z / 2;
+
+  let center = { x: cx, y: cy, z: cz };
+  let normal = { x: 0, y: 0, z: 0 };
+
+  if (edge === "left") {
+    // -x face; holes spread along z from (cz - hz) to (cz + hz)
+    center = { x: cx - hx, y: cy, z: cz - hz + posAlongEdge };
+    normal = { x: -1, y: 0, z: 0 };
+  } else if (edge === "right") {
+    center = { x: cx + hx, y: cy, z: cz - hz + posAlongEdge };
+    normal = { x: 1, y: 0, z: 0 };
+  } else if (edge === "bottom-edge") {
+    // -z face; holes spread along x
+    center = { x: cx - hx + posAlongEdge, y: cy, z: cz - hz };
+    normal = { x: 0, y: 0, z: -1 };
+  } else {
+    // top-edge: +z face
+    center = { x: cx - hx + posAlongEdge, y: cy, z: cz + hz };
+    normal = { x: 0, y: 0, z: 1 };
+  }
+
   return {
     jointId,
     partId: part.id,
-    center: { x: 0, y: 0, z: 0 },
-    normal: { x: 0, y: 0, z: 0 },
+    center,
+    normal,
     angleDeg: ANGLE_DEG,
     entranceLong: ENTRANCE_LONG,
     entranceShort: ENTRANCE_SHORT,
