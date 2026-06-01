@@ -1359,6 +1359,7 @@ function Workspace({
                         x: patch.x,
                         z: patch.z,
                         y: patch.y,
+                        rotationDeg: patch.rotationDeg,
                       }).project,
                     )
                   }

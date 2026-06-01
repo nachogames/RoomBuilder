@@ -31,6 +31,8 @@ export interface PatchEntityArg {
   y?: number;
   x: number;
   z: number;
+  /** rotation around Y in degrees; undefined when only translation changed */
+  rotationDeg?: number;
 }
 export interface SubSel {
   kind: "shelf";
@@ -669,9 +671,10 @@ function MoveGizmo({
   const selRef = useRef(sel);
   selRef.current = sel;
 
-  // Invisible proxy: gizmo writes here, we read it and route through the
+  // Invisible proxy: gizmos write here, we read it and route through the
   // resolver. The scene group's actual position is driven by project state.
   const proxy = useMemo(() => new THREE.Object3D(), []);
+  const rotateTcRef = useRef<unknown>(null);
 
   // Pick the right "current position" source based on mode.
   const getCurrentTarget = useCallback((): { x: number; y: number; z: number } | null => {
@@ -685,13 +688,30 @@ function MoveGizmo({
     return entityPos(projectRef.current, k, id);
   }, []);
 
+  // Current Y rotation in radians for the selected entity (carcass/runner/
+  // refBox/person). The Scene renders these with a -rotationDeg yaw, so
+  // for the gizmo we mirror that convention.
+  const getCurrentRotationY = useCallback((): number => {
+    const k = kindRef.current;
+    const id = selRef.current;
+    if (!k || !id) return 0;
+    const p = projectRef.current;
+    let deg = 0;
+    if (k === "carcass") deg = p.carcasses.find((x) => x.id === id)?.rotationDeg ?? 0;
+    else if (k === "runner") deg = p.runners.find((x) => x.id === id)?.rotationDeg ?? 0;
+    else if (k === "refBox") deg = p.refBoxes.find((x) => x.id === id)?.rotationDeg ?? 0;
+    else if (k === "person") deg = p.people.find((x) => x.id === id)?.rotationDeg ?? 0;
+    return (-deg * Math.PI) / 180;
+  }, []);
+
   // Re-sync the proxy when selection / project state changes outside a drag.
   useEffect(() => {
     if (draggingRef.current) return;
     const cur = getCurrentTarget();
     if (!cur) return;
     proxy.position.set(cur.x, cur.y, cur.z);
-  }, [project, sel, subSel, kind, proxy, getCurrentTarget]);
+    proxy.rotation.set(0, getCurrentRotationY(), 0);
+  }, [project, sel, subSel, kind, proxy, getCurrentTarget, getCurrentRotationY]);
 
   // Capture-phase listener: when user presses on a gizmo handle, suppress
   // SelectableGroup's onPointerDown so it doesn't steal selection.
@@ -699,7 +719,8 @@ function MoveGizmo({
     const dom = gl.domElement;
     const onDown = () => {
       const tc = tcRef.current;
-      if (tc && tc.axis) gizmoBusy.current = true;
+      const rtc = rotateTcRef.current as { axis?: string } | null;
+      if ((tc && tc.axis) || (rtc && rtc.axis)) gizmoBusy.current = true;
     };
     const onUp = () => {
       setTimeout(() => { gizmoBusy.current = false; }, 0);
@@ -715,6 +736,9 @@ function MoveGizmo({
   const isShelf = subSel?.kind === "shelf";
   const visible = isShelf || (!!sel && !!kind);
   if (!visible) return null;
+
+  // Rotation gizmo shown for any entity-kind selection (not shelves). Y-only.
+  const showRotateGizmo = !isShelf && !!kind;
 
   return (
     <>
@@ -775,6 +799,56 @@ function MoveGizmo({
           onEndInteraction();
         }}
       />
+      {showRotateGizmo && (
+        <TransformControls
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          ref={rotateTcRef as any}
+          object={proxy}
+          mode="rotate"
+          size={1.1}
+          rotationSnap={(15 * Math.PI) / 180}
+          // Y-only rotation: bookcases, runners, totes and people only
+          // pivot around the vertical axis.
+          showX={false}
+          showY
+          showZ={false}
+          onMouseDown={() => {
+            draggingRef.current = true;
+            gizmoBusy.current = true;
+            if (orbit) orbit.enabled = false;
+            // Make sure the proxy carries the entity's current rotation
+            // so the user's drag is RELATIVE to it, not to zero.
+            proxy.rotation.set(0, getCurrentRotationY(), 0);
+            const cur = getCurrentTarget();
+            if (cur) proxy.position.set(cur.x, cur.y, cur.z);
+            onCommitHistory();
+          }}
+          onObjectChange={() => {
+            if (!draggingRef.current) return;
+            const k = kindRef.current;
+            const id = selRef.current;
+            if (!k || !id) return;
+            // Mirror the Scene's `-rotationDeg` yaw convention.
+            const rad = proxy.rotation.y;
+            const rotationDeg = -((rad * 180) / Math.PI);
+            onPatchEntity(id, k, {
+              x: proxy.position.x,
+              z: proxy.position.z,
+              y: k === "person" ? undefined : proxy.position.y,
+              rotationDeg,
+            });
+          }}
+          onMouseUp={() => {
+            if (!draggingRef.current) return;
+            draggingRef.current = false;
+            if (orbit) orbit.enabled = true;
+            const cur = getCurrentTarget();
+            if (cur) proxy.position.set(cur.x, cur.y, cur.z);
+            proxy.rotation.set(0, getCurrentRotationY(), 0);
+            onEndInteraction();
+          }}
+        />
+      )}
     </>
   );
 }

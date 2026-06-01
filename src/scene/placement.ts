@@ -39,6 +39,8 @@ export interface DropTarget {
   z: number;
   /** desired baseHeight; ignored for people. If omitted, snapHeight runs. */
   y?: number;
+  /** desired Y rotation in degrees; if omitted, current rotation is kept. */
+  rotationDeg?: number;
 }
 
 export interface DropResult {
@@ -103,12 +105,17 @@ function dropCarcass(project: Project, id: string, t: DropTarget): DropResult {
   const c = project.carcasses.find((k) => k.id === id);
   if (!c) return { project };
   const oldY = c.baseHeight ?? 0;
+  // Apply the new rotation (if any) BEFORE the wall-clamp so the rect we
+  // check is oriented correctly.
+  const rotated: Carcass = t.rotationDeg !== undefined
+    ? { ...c, rotationDeg: t.rotationDeg }
+    : c;
   const ok = (px: number, pz: number) => {
-    const r = carcassRoomRect(c, project, px, pz);
-    return rectInsideRoom(project.room.walls, r.cx, r.cz, r.w, r.d, c.rotationDeg);
+    const r = carcassRoomRect(rotated, project, px, pz);
+    return rectInsideRoom(project.room.walls, r.cx, r.cz, r.w, r.d, rotated.rotationDeg);
   };
   const pos = resolveMove(ok, t.x, t.z, c.position, false);
-  const next: Carcass = { ...c, position: pos };
+  const next: Carcass = { ...rotated, position: pos };
   const proj1: Project = {
     ...project,
     carcasses: project.carcasses.map((k) => (k.id === id ? next : k)),
@@ -126,8 +133,12 @@ function dropCarcass(project: Project, id: string, t: DropTarget): DropResult {
 }
 
 function dropRunner(project: Project, id: string, t: DropTarget): DropResult {
-  const r = project.runners.find((k) => k.id === id);
-  if (!r) return { project };
+  const rOrig = project.runners.find((k) => k.id === id);
+  if (!rOrig) return { project };
+  // Apply rotation (if provided) before everything else.
+  const r: Runner = t.rotationDeg !== undefined
+    ? { ...rOrig, rotationDeg: t.rotationDeg }
+    : rOrig;
   const container = findContainer(
     {
       id: r.id,
@@ -152,7 +163,9 @@ function dropRunner(project: Project, id: string, t: DropTarget): DropResult {
     const t2 = translateGroup(r, project, pos.x - r.position.x, pos.z - r.position.z);
     proj1 = {
       ...project,
-      runners: project.runners.map((k) => (k.id === r.id ? t2.runner : k)),
+      runners: project.runners.map((k) =>
+        k.id === r.id ? { ...t2.runner, rotationDeg: r.rotationDeg } : k,
+      ),
       carcasses: project.carcasses.map((k) =>
         t2.carcassPos[k.id] ? { ...k, position: t2.carcassPos[k.id] } : k,
       ),
@@ -161,7 +174,7 @@ function dropRunner(project: Project, id: string, t: DropTarget): DropResult {
     proj1 = {
       ...project,
       runners: project.runners.map((k) =>
-        k.id === r.id ? { ...k, position: pos } : k,
+        k.id === r.id ? { ...k, position: pos, rotationDeg: r.rotationDeg } : k,
       ),
     };
   }
@@ -180,8 +193,11 @@ function dropRunner(project: Project, id: string, t: DropTarget): DropResult {
 }
 
 function dropRefBox(project: Project, id: string, t: DropTarget): DropResult {
-  const bx = project.refBoxes.find((k) => k.id === id);
-  if (!bx) return { project };
+  const bxOrig = project.refBoxes.find((k) => k.id === id);
+  if (!bxOrig) return { project };
+  const bx: RefBox = t.rotationDeg !== undefined
+    ? { ...bxOrig, rotationDeg: t.rotationDeg }
+    : bxOrig;
   const bw = Math.max(bx.width, bx.topWidth ?? bx.width);
   const bd = Math.max(bx.depth, bx.topDepth ?? bx.depth);
   const container = findContainer(
@@ -200,9 +216,12 @@ function dropRefBox(project: Project, id: string, t: DropTarget): DropResult {
     const updates = { ...cascade.updates, [bx.id]: cascade.moverPos };
     proj1 = {
       ...project,
-      refBoxes: project.refBoxes.map((k) =>
-        updates[k.id] ? { ...k, position: updates[k.id] } : k,
-      ),
+      refBoxes: project.refBoxes.map((k) => {
+        if (k.id === bx.id) {
+          return { ...k, position: cascade.moverPos!, rotationDeg: bx.rotationDeg };
+        }
+        return updates[k.id] ? { ...k, position: updates[k.id] } : k;
+      }),
     };
   }
   const moved = proj1.refBoxes.find((k) => k.id === id) as RefBox;
@@ -220,8 +239,11 @@ function dropRefBox(project: Project, id: string, t: DropTarget): DropResult {
 }
 
 function dropPerson(project: Project, id: string, t: DropTarget): DropResult {
-  const pn = project.people.find((k) => k.id === id);
-  if (!pn) return { project };
+  const pnOrig = project.people.find((k) => k.id === id);
+  if (!pnOrig) return { project };
+  const pn: Person = t.rotationDeg !== undefined
+    ? { ...pnOrig, rotationDeg: t.rotationDeg }
+    : pnOrig;
   const fp = personFootprint(pn);
   const ok = (px: number, pz: number) =>
     rectInsideRoom(project.room.walls, px, pz, fp.width, fp.depth, pn.rotationDeg);
