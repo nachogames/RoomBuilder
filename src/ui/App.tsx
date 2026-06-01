@@ -30,9 +30,37 @@ import { checkRunnerSag } from "../domain/sag";
 import { Scene } from "../scene/Scene";
 import { resolveDrop, resolveShelfDrop } from "../scene/placement";
 import { PlanView } from "../scene/PlanView";
+import { AssemblyView } from "../scene/AssemblyView";
 import { roomInteriorPoint } from "../domain/room";
 import { fitRunnerToCarcasses } from "../geometry/group";
 import { loadViewState, saveViewState } from "./viewState";
+import {
+  clear as clearSel,
+  deserialize as deserializeSel,
+  replace as replaceSel,
+  serialize as serializeSel,
+  toggle as toggleSel,
+  unionIds,
+  type SelectionState,
+} from "../scene/selection";
+import { openCutlistPrintWindow } from "./printWindow";
+import {
+  CUTLIST_VISUAL_CSS,
+  renderBoardMaterial,
+  renderDetailTable as renderCutlistDetailTable,
+  renderSheetSvg,
+  sheetHeading,
+  sheetSubtitle,
+} from "./cutlistVisual";
+import { formatLength } from "../domain/measure";
+import { ZoomPan } from "./ZoomPan";
+import { groupPocketsByPart, type PartPocketGroup } from "../pockets/byPart";
+import {
+  POCKET_VISUAL_CSS,
+  partHeading,
+  partSubtitle,
+  renderPartSvg,
+} from "./pocketVisual";
 import { DimField, NumField, SelectField, StepField } from "./fields";
 import { UnitsProvider, useUnits } from "./units";
 import { useProjectHistory } from "./useProjectHistory";
@@ -62,7 +90,7 @@ const SUPPORT_KINDS: readonly SupportKind[] = [
   "leg",
   "cleat",
 ];
-type Tab = "3D" | "Plan" | "Cut list" | "Pocket plan" | "Materials";
+type Tab = "3D" | "Plan" | "Assembly" | "Cut list" | "Pocket plan" | "Materials";
 
 /** Placement controls shared by carcasses, runners (desktops) and totes. */
 interface Placeable {
@@ -154,7 +182,14 @@ function Workspace({
 }) {
   const { fmt } = useUnits();
   const view0 = useMemo(() => loadViewState(), []);
-  const [sel, setSel] = useState<string>(view0.sel ?? "room");
+  const [selection, setSelection] = useState<SelectionState>(() => {
+    const restored = deserializeSel(view0.sel);
+    return restored.primary || restored.extras.size > 0
+      ? restored
+      : { primary: "room", extras: new Set() };
+  });
+  const sel = selection.primary;
+  const setSel = (id: string) => setSelection(replaceSel(id));
   const [subSel, setSubSel] = useState<{ kind: "shelf"; carcassId: string; idx: number } | null>(null);
   // Selecting via tree/inspector clears subSel so the inspector view doesn't
   // contradict a stale shelf focus.
@@ -166,6 +201,21 @@ function Workspace({
     setSel(carcassId);
     setSubSel({ kind: "shelf", carcassId, idx });
   };
+  // Handler passed to Scene: plain click replaces, Cmd/Ctrl-click toggles.
+  // Empty id (from the deselect plane / Escape) clears everything.
+  const onSceneSelect = (id: string, opts?: { toggle?: boolean }) => {
+    setSubSel(null);
+    if (!id) {
+      setSelection(clearSel());
+      return;
+    }
+    if (opts?.toggle) {
+      setSelection((s) => toggleSel(s, id));
+      return;
+    }
+    setSelection(replaceSel(id));
+  };
+  const selectionIds = useMemo(() => unionIds(selection), [selection]);
   const [collapse, setCollapse] = useState<Record<string, boolean>>({});
   const [tab, setTab] = useState<Tab>((view0.tab as Tab) ?? "3D");
   const [showDims, setShowDims] = useState(true);
@@ -200,6 +250,33 @@ function Workspace({
     const bom = buildBom(g.joints, cutList, pocketPlan);
     return { ...g, cutList, pocketPlan, bom };
   }, [project]);
+
+  // Cutlist scoped to whatever the user has selected. Empty selection => empty
+  // cutlist (the tab renders an "select items in the scene" empty state).
+  const selectedCutList = useMemo(() => {
+    if (selectionIds.size === 0) return null;
+    const g = derived;
+    const selectedParts = g.parts.filter((p) => selectionIds.has(p.carcassId));
+    if (selectedParts.length === 0) return null;
+    return buildCutList(selectedParts, project.catalog);
+  }, [derived, project.catalog, selectionIds]);
+
+  const selectedPocketGroups = useMemo<PartPocketGroup[]>(() => {
+    if (selectionIds.size === 0) return [];
+    const all = groupPocketsByPart(derived.pocketPlan, derived.joints, derived.parts);
+    return all.filter((g) => selectionIds.has(g.carcassId));
+  }, [derived.pocketPlan, derived.joints, derived.parts, selectionIds]);
+
+  const selectedItemLabels = useMemo(() => {
+    const labels: string[] = [];
+    for (const id of selectionIds) {
+      const c = project.carcasses.find((x) => x.id === id);
+      if (c) { labels.push(c.label); continue; }
+      const r = project.runners.find((x) => x.id === id);
+      if (r) { labels.push(r.label); continue; }
+    }
+    return labels;
+  }, [project.carcasses, project.runners, selectionIds]);
 
   const checks = useMemo(() => {
     const cc = project.carcasses.flatMap((c) => checkCarcass(c, project));
@@ -239,8 +316,8 @@ function Workspace({
   }, []);
 
   useEffect(() => {
-    saveViewState({ tab, sel });
-  }, [tab, sel]);
+    saveViewState({ tab, sel: serializeSel(selection) });
+  }, [tab, selection]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -551,6 +628,12 @@ function Workspace({
           </div>
 
           <div className="inspector">
+          {selection.extras.size > 0 && (
+            <p className="label" style={{ opacity: 0.8 }}>
+              {selection.extras.size + 1} items selected — editing primary.
+              Switch to the <b>Cut list</b> tab to see the combined cutlist.
+            </p>
+          )}
           {sel === "room" && (
           <>
           <div className="row">
@@ -1170,7 +1253,7 @@ function Workspace({
         <main className="view">
           <nav className="tabs">
             {(
-              ["3D", "Plan", "Cut list", "Pocket plan", "Materials"] as Tab[]
+              ["3D", "Plan", "Assembly", "Cut list", "Pocket plan", "Materials"] as Tab[]
             ).map(
               (t) => (
                 <button
@@ -1192,10 +1275,10 @@ function Workspace({
                 Dimensions: {showDims ? "on" : "off"}
               </button>
             )}
-            {tab === "Cut list" && (
+            {tab === "Cut list" && selectedCutList && (
               <button
                 onClick={() =>
-                  downloadText("cutlist.csv", cutListCsv(derived.cutList))
+                  downloadText("cutlist.csv", cutListCsv(selectedCutList))
                 }
               >
                 Export CSV
@@ -1266,8 +1349,9 @@ function Workspace({
                   project={project}
                   dollhouse={dollhouse}
                   sel={sel}
+                  extras={selection.extras}
                   subSel={subSel}
-                  onSelect={setSelId}
+                  onSelect={onSceneSelect}
                   onSelectShelf={onSelectShelf}
                   onPatchEntity={(id, kind, patch) =>
                     setProject((pr) =>
@@ -1298,63 +1382,96 @@ function Workspace({
               />
             )}
 
+            {tab === "Assembly" && (
+              <div className="canvas-wrap" style={{ position: "relative", width: "100%", height: "100%" }}>
+                <AssemblyView project={project} carcassId={sel} />
+              </div>
+            )}
+
             {tab === "Cut list" && (
               <div className="report">
-                {derived.cutList.byMaterial.map((m) => (
-                  <div key={m.materialId}>
-                    <h4>
-                      {m.materialName} — {m.stockCount}{" "}
-                      {m.kind === "sheet" ? "sheet(s)" : "board(s)"}
-                    </h4>
-                    {m.kind === "sheet"
-                      ? m.sheetBins.map((b, i) => (
-                          <table key={i}>
-                            <thead>
-                              <tr>
-                                <th>Sheet {i + 1}</th>
-                                <th>Length</th>
-                                <th>Width</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {b.placements.map((pl, k) => (
-                                <tr key={k}>
-                                  <td>{pl.label}</td>
-                                  <td>{fmt(pl.w)}</td>
-                                  <td>{fmt(pl.h)}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        ))
-                      : m.boardBins.map((b, i) => (
-                          <table key={i}>
-                            <thead>
-                              <tr>
-                                <th>
-                                  {b.nominal} #{i + 1} (leftover{" "}
-                                  {fmt(b.leftover)})
-                                </th>
-                                <th>Length</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {b.cuts.map((c, k) => (
-                                <tr key={k}>
-                                  <td>{c.label}</td>
-                                  <td>{fmt(c.length)}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        ))}
-                  </div>
-                ))}
+                {!selectedCutList && (
+                  <p className="label">
+                    Select items in the 3D scene to build a cutlist.
+                    Cmd/Ctrl-click in the 3D view to pick multiple items.
+                  </p>
+                )}
+                {selectedCutList && (
+                  <>
+                    <style>{CUTLIST_VISUAL_CSS}</style>
+                    <div className="row" style={{ alignItems: "center", gap: 12, marginBottom: 8 }}>
+                      <div>
+                        <strong>{selectedItemLabels.length} item{selectedItemLabels.length === 1 ? "" : "s"}:</strong>{" "}
+                        {selectedItemLabels.join(", ") || "(no buildable parts in selection)"}
+                      </div>
+                      <button
+                        onClick={() =>
+                          openCutlistPrintWindow({
+                            projectName: project.name,
+                            cutList: selectedCutList,
+                            itemLabels: selectedItemLabels,
+                            unitsLabel: project.units,
+                            pocketGroups: selectedPocketGroups,
+                          })
+                        }
+                      >
+                        Open printable view
+                      </button>
+                    </div>
+                    {selectedCutList.byMaterial.map((m) => {
+                      const f = (n: number) => formatLength(n, project.units);
+                      if (m.kind === "sheet") {
+                        return m.sheetBins.map((b, i) => (
+                          <div key={`${m.materialId}-${i}`} className="cv-sheet-block">
+                            <h3 className="cv-h3">
+                              {sheetHeading(m.materialName, i + 1, m.sheetBins.length)}
+                            </h3>
+                            <div className="cv-sub">{sheetSubtitle(b, f)}</div>
+                            <ZoomPan html={renderSheetSvg(b, f, "screen")} />
+                          </div>
+                        ));
+                      }
+                      const html = renderBoardMaterial(m, f, "screen");
+                      if (!html) return null;
+                      return <ZoomPan key={m.materialId} html={html} />;
+                    })}
+                    <div
+                      dangerouslySetInnerHTML={{
+                        __html: renderCutlistDetailTable(
+                          selectedCutList,
+                          (n) => formatLength(n, project.units),
+                        ),
+                      }}
+                    />
+                  </>
+                )}
               </div>
             )}
 
             {tab === "Pocket plan" && (
               <div className="report">
+                <style>{POCKET_VISUAL_CSS}</style>
+                {selectedPocketGroups.length === 0 ? (
+                  <p className="label">
+                    Select items in the 3D scene (Cmd/Ctrl-click for multiple)
+                    to see per-part drilling cards.
+                  </p>
+                ) : (
+                  <>
+                    <h3>Drilling guide</h3>
+                    {selectedPocketGroups.map((g) => {
+                      const f = (n: number) => formatLength(n, project.units);
+                      return (
+                        <div key={g.partId} className="pv-block">
+                          <h4 className="pv-h3">{partHeading(g)}</h4>
+                          <div className="pv-sub">{partSubtitle(g, f)}</div>
+                          <ZoomPan html={renderPartSvg(g, f, "screen")} />
+                        </div>
+                      );
+                    })}
+                  </>
+                )}
+                <h3>Per-joint table</h3>
                 <table>
                   <thead>
                     <tr>
