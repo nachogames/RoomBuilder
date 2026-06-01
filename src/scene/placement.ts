@@ -14,7 +14,16 @@ export type MovableKind = "carcass" | "runner" | "refBox" | "person";
  * The world-space footprint of a carcass including its surface-mounted
  * back panel. The back hangs off the carcass's local -z direction by
  * `tb`, so the enlarged rect is `(width, depth + tb)` shifted from
- * `(px, pz)` by `tb/2` toward local -z.
+ * `(px, pz)` by `tb/2` toward that direction in world coords.
+ *
+ * Convention: the Scene renders carcasses with three.js rotation
+ * `-rotationDeg` (positive rotationDeg = clockwise when viewed from
+ * above). Under that convention, the carcass's local -z direction (the
+ * back) maps to world (sin(rotationDeg), -cos(rotationDeg)):
+ *  - rotationDeg=0  → back faces world -z   ✓
+ *  - rotationDeg=90 → back faces world +x   ✓
+ *  - rotationDeg=180→ back faces world +z   ✓
+ *  - rotationDeg=270→ back faces world -x   ✓
  */
 export function carcassRoomRect(
   c: Carcass,
@@ -27,8 +36,8 @@ export function carcassRoomRect(
     : 0;
   const a = (c.rotationDeg * Math.PI) / 180;
   return {
-    cx: px + -Math.sin(a) * (tb / 2),
-    cz: pz + -Math.cos(a) * (tb / 2),
+    cx: px + Math.sin(a) * (tb / 2),
+    cz: pz - Math.cos(a) * (tb / 2),
     w: c.width,
     d: c.depth + tb,
   };
