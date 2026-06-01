@@ -172,11 +172,18 @@ function markForPosition(
   // bit travels along the face most of the way.
   const drillAxis = tilt(endDir, neg(normal), ANGLE_FROM_SURFACE_DEG);
 
-  // Visual cylinder length: reach almost to the end of the part along the
-  // in-face component of the drill axis. With axis at 15° off the surface,
-  // travelling END_INSET along the face requires depth = END_INSET / cos(15°).
-  // Pull back ~10% so the tip stops just short of the end-grain face.
-  const visualDepth = (END_INSET / Math.cos((ANGLE_FROM_SURFACE_DEG * Math.PI) / 180)) * 0.9;
+  // Visual cylinder length: with the axis at 15° off the surface, travelling
+  // END_INSET along the face would require depth = END_INSET / cos(15°),
+  // which puts the cylinder TIP right at the end-grain face. Because the
+  // cylinder has a non-zero radius, its sides extend past the face plane
+  // even when the axis tip stops on it — pull back more aggressively so
+  // the whole tube stays inside the wood.
+  const axisDepth = END_INSET / Math.cos((ANGLE_FROM_SURFACE_DEG * Math.PI) / 180);
+  const radius = (ENTRANCE_SHORT / 2) * 0.85;
+  // Tip-cap is tilted relative to the end-grain plane; the silhouette
+  // breach equals roughly radius / tan(complement). Easier to just
+  // subtract `radius` from the axis depth as a safe upper bound.
+  const visualDepth = Math.max(0.1, axisDepth - radius * 2);
 
   return {
     jointId,
