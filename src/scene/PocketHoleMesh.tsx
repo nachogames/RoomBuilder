@@ -84,7 +84,12 @@ export function PocketHoleMesh({ mark }: { mark: PocketHoleMark }) {
         <cylinderGeometry
           args={[entranceSx * 0.85, entranceSx * 0.85, mark.depth, 16]}
         />
-        <meshStandardMaterial color={COLOR} />
+        <meshStandardMaterial
+          color={COLOR}
+          polygonOffset
+          polygonOffsetFactor={-1}
+          polygonOffsetUnits={-1}
+        />
       </mesh>
     </group>
   );

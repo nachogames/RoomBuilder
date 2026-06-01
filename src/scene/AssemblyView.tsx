@@ -29,6 +29,10 @@ export function AssemblyView({
 }) {
   const carcass = project.carcasses.find((c) => c.id === carcassId);
   const [explodeT, setExplodeT] = useState(0);
+  // Bumping this remounts the Canvas, which resets the OrbitControls
+  // back to the initial camera. Simpler than threading a controls ref
+  // through to a button.
+  const [cameraEpoch, setCameraEpoch] = useState(0);
 
   const geometry = useMemo(() => {
     if (!carcass) return null;
@@ -59,8 +63,13 @@ export function AssemblyView({
 
   return (
     <div style={{ position: "relative", width: "100%", height: "100%" }}>
-      <ExplodeControl t={explodeT} onChange={setExplodeT} />
+      <ExplodeControl
+        t={explodeT}
+        onChange={setExplodeT}
+        onResetView={() => setCameraEpoch((n) => n + 1)}
+      />
       <Canvas
+        key={cameraEpoch}
         shadows
         camera={{
           position: [carcass.width * 1.5, carcass.height * 0.9, carcass.depth * 1.8],
@@ -150,9 +159,11 @@ function AssemblyPart({
 function ExplodeControl({
   t,
   onChange,
+  onResetView,
 }: {
   t: number;
   onChange: (v: number) => void;
+  onResetView: () => void;
 }) {
   return (
     <div
@@ -167,7 +178,7 @@ function ExplodeControl({
         borderRadius: 4,
         display: "flex",
         flexDirection: "column",
-        gap: 4,
+        gap: 6,
         minWidth: 180,
       }}
     >
@@ -180,6 +191,20 @@ function ExplodeControl({
         value={t}
         onChange={(e) => onChange(parseFloat(e.target.value))}
       />
+      <button
+        onClick={onResetView}
+        style={{
+          fontSize: 11,
+          padding: "2px 6px",
+          background: "#333",
+          color: "#fff",
+          border: "1px solid #555",
+          borderRadius: 3,
+          cursor: "pointer",
+        }}
+      >
+        Reset view
+      </button>
     </div>
   );
 }
