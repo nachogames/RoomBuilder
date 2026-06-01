@@ -86,9 +86,9 @@ describe("fitRunnerToCarcasses", () => {
   });
 
   it("two bookcases turned 90° to face each other → shelf ends at each back-panel inside face", () => {
-    // back panels flush to a 128.5" room's two ends; bookcase depth 11.25, so
-    // cx = depth/2 = 5.625 on the left, 128.5 − 5.625 = 122.875 on the right.
-    // Default back is PLY_25 (1/4"); length = 128.5 − 2·0.25 = 128.
+    // Back panels are surface-mounted so the inner face of the back IS the
+    // rear of the framing. In a 128.5" gap between two bookcases facing each
+    // other, the shelf spans the full 128.5" between the framing rears.
     const left: Carcass = {
       ...defaultBookcase(),
       id: "L",
@@ -112,7 +112,7 @@ describe("fitRunnerToCarcasses", () => {
     const r = { ...defaultRunner(["L", "R"]), id: "R0", groupDrag: false };
     const p = { ...defaultProject(), carcasses: [left, right], runners: [r] };
     const patch = fitRunnerToCarcasses(r, p);
-    expect(patch.length).toBeCloseTo(128, 6);
+    expect(patch.length).toBeCloseTo(128.5, 6);
     expect(patch.position!.x).toBeCloseTo(64.25, 6);
   });
 

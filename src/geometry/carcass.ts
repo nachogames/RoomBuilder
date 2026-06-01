@@ -23,9 +23,11 @@ export function buildCarcass(
   const ts = materialThickness(M, c.shelfMaterialId);
   const { width: W, height: H, depth: D } = c;
   const toe = c.toeKickHeight;
-  const backT = c.hasBack ? tb : 0;
+  // Back panel is surface-mounted (nailed onto the rear) so it sits
+  // BEHIND the framing at z = -D/2 - tb/2 and doesn't eat into the
+  // carcass interior depth. Shelves use the full depth D.
   const innerW = W - 2 * t;
-  const shelfDepth = D - backT;
+  const shelfDepth = D;
 
   const parts: Part[] = [];
   const joints: Joint[] = [];
@@ -157,8 +159,12 @@ export function buildCarcass(
   }
 
   // --- Back ---
+  // Surface-mounted: the back panel is sized to the carcass's full
+  // exterior W x H and sits BEHIND the rear edges of sides/top/bottom,
+  // nailed (or screwed) on. Its front face touches the back edges of
+  // the framing at z = -D/2, so center.z = -D/2 - tb/2.
   if (c.hasBack) {
-    const backH = H - toe;
+    const backH = H;
     const backId = pid();
     parts.push(
       mkPart({
@@ -170,7 +176,7 @@ export function buildCarcass(
         thickness: tb,
         grainMatters: false,
         box: { x: W, y: backH, z: tb },
-        center: { x: 0, y: toe + backH / 2, z: -D / 2 + tb / 2 },
+        center: { x: 0, y: backH / 2, z: -D / 2 - tb / 2 },
         major: W,
         minor: backH,
       }),

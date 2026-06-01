@@ -69,9 +69,10 @@ describe("clampToInterior (sides + back, front open)", () => {
   });
 
   it("stops at the back wall", () => {
-    // backInner = -11.25/2 + 0.25 = -5.375 ; minLz = -5.375 + 4 = -1.375
+    // Surface-mounted back sits behind the framing, so backInner is just
+    // -depth/2 = -5.625. minLz = -5.625 + 4 = -1.625
     const r = clampToInterior(c, 16, 8, 0, -100, p);
-    expect(r.z).toBeCloseTo(-1.375, 6);
+    expect(r.z).toBeCloseTo(-1.625, 6);
   });
 
   it("leaves the front open (no clamp toward +z)", () => {
@@ -80,10 +81,11 @@ describe("clampToInterior (sides + back, front open)", () => {
   });
 
   it("stops a deep item's rear at the back wall (extra depth pokes out front)", () => {
-    // itemD 30 > cavity 11: backInner -5.375, hz 15 → minLz 9.625, so the rear
-    // edge lands on the back inner face and the rest sticks out the open front
-    expect(clampToInterior(c, 16, 30, 0, -100, p).z).toBeCloseTo(9.625, 6);
-    expect(clampToInterior(c, 16, 30, 0, 2, p).z).toBeCloseTo(9.625, 6);
+    // itemD 30 > cavity 11.25: backInner -5.625, hz 15 → minLz 9.375, so the
+    // rear edge lands on the back inner face and the rest sticks out the
+    // open front.
+    expect(clampToInterior(c, 16, 30, 0, -100, p).z).toBeCloseTo(9.375, 6);
+    expect(clampToInterior(c, 16, 30, 0, 2, p).z).toBeCloseTo(9.375, 6);
     // pulled toward the open front it still follows freely (front stays open)
     expect(clampToInterior(c, 16, 30, 0, 100, p).z).toBeCloseTo(100, 6);
     // sides still clamp
@@ -177,9 +179,9 @@ describe("clampToInterior is rotation-aware (edges stay off the inner walls)", (
   });
 
   it("stops at the back by the turned footprint", () => {
-    // box w8/d4 turned 90° → 8 faces front/back; minLz = -5.375 + 4 = -1.375
+    // box w8/d4 turned 90° → 8 faces front/back; minLz = -5.625 + 4 = -1.625
     const r = clampToInterior(c, 8, 4, 0, -100, p, 90);
-    expect(r.z).toBeCloseTo(-1.375, 6);
+    expect(r.z).toBeCloseTo(-1.625, 6);
   });
 
   it("handles an arbitrary angle (45°)", () => {

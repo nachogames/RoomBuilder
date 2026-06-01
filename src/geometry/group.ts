@@ -91,11 +91,10 @@ function cavityWorldXRange(
     project.catalog.materials,
     c.carcassMaterialId,
   );
-  const backT = c.hasBack
-    ? materialThickness(project.catalog.materials, c.backMaterialId)
-    : 0;
+  // Surface-mounted back doesn't shrink the cavity; it just sits behind
+  // the back edges of the framing at z = -depth/2.
   const hwIn = c.width / 2 - sideT;
-  const backInner = -c.depth / 2 + backT;
+  const backInner = -c.depth / 2;
   const frontEdge = c.depth / 2;
   // 4 cavity corners in local coords (front edge is open; using its line as
   // the local-z bound on that side)

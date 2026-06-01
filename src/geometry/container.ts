@@ -43,13 +43,13 @@ interface Interior {
 
 function interiorOf(c: Carcass, project: Project): Interior {
   const t = materialThickness(project.catalog.materials, c.carcassMaterialId);
-  const backT = c.hasBack
-    ? materialThickness(project.catalog.materials, c.backMaterialId)
-    : 0;
+  // Back panel is surface-mounted on the rear so it doesn't reduce
+  // interior depth; the inner face of the back lines up with the back
+  // edges of the framing at z = -depth/2.
   return {
     innerW: c.width - 2 * t,
-    interiorD: c.depth - backT,
-    backInner: -c.depth / 2 + backT,
+    interiorD: c.depth,
+    backInner: -c.depth / 2,
   };
 }
 

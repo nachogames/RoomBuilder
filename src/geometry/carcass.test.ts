@@ -40,14 +40,18 @@ describe("buildCarcass (default 20.75\" bookcase, 3 shelves, toe kick, back)", (
     expect(top.length).toBeCloseTo(19.25, 6);
     expect(top.width).toBeCloseTo(11.25, 6);
 
+    // Surface-mounted back panel: full carcass W × H, sized to overhang
+    // the framing on the back face.
     const back = g.parts.find((p) => p.role === "back")!;
-    expect(back.length).toBe(69);
+    expect(back.length).toBe(72);
     expect(back.width).toBe(20.75);
     expect(back.thickness).toBe(0.25);
 
+    // Shelves use the full carcass depth now that the back doesn't eat
+    // into the interior.
     const shelf = g.parts.find((p) => p.role === "shelf")!;
     expect(shelf.length).toBeCloseTo(19.25, 6);
-    expect(shelf.width).toBeCloseTo(11.0, 6);
+    expect(shelf.width).toBeCloseTo(11.25, 6);
   });
 
   it("keeps every part inside the carcass envelope", () => {
