@@ -1,5 +1,6 @@
 import type { StockCatalog } from "../domain/types";
-import type { Joint, Part } from "./types";
+import type { DrilledEdge, Joint, Part } from "./types";
+import { holePositions } from "../pockets/kreg";
 
 export interface PocketHoleMark {
   jointId: string;
@@ -21,10 +22,47 @@ export interface PocketHoleMark {
   depth: number;
 }
 
+const ENTRANCE_LONG = 0.5;
+const ENTRANCE_SHORT = 0.375;
+const ANGLE_DEG = 15;
+
 export function pocketHoleMarks(
-  _parts: Part[],
-  _joints: Joint[],
+  parts: Part[],
+  joints: Joint[],
   _catalog: StockCatalog,
 ): PocketHoleMark[] {
-  return [];
+  const byId = new Map(parts.map((p) => [p.id, p]));
+  const out: PocketHoleMark[] = [];
+  for (const j of joints) {
+    if (j.method !== "pocket-screw") continue;
+    if (!j.drilledPartId || !j.drilledEdge) continue;
+    const part = byId.get(j.drilledPartId);
+    if (!part) continue;
+    const positions = holePositions(j.edgeLength);
+    for (const pos of positions) {
+      out.push(markForPosition(part, j.id, j.drilledEdge, pos));
+    }
+  }
+  return out;
+}
+
+function markForPosition(
+  part: Part,
+  jointId: string,
+  _edge: DrilledEdge,
+  _posAlongEdge: number,
+): PocketHoleMark {
+  // Placeholder: all geometry zeros — face mapping comes in the next task.
+  return {
+    jointId,
+    partId: part.id,
+    center: { x: 0, y: 0, z: 0 },
+    normal: { x: 0, y: 0, z: 0 },
+    angleDeg: ANGLE_DEG,
+    entranceLong: ENTRANCE_LONG,
+    entranceShort: ENTRANCE_SHORT,
+    // Visualised cylinder extends 90% into the part, capped at the typical
+    // Kreg drill-collar travel of 1".
+    depth: Math.min(part.thickness * 0.9, 1.0),
+  };
 }
