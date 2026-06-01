@@ -27,7 +27,10 @@ export interface PocketHoleMark {
 
 const ENTRANCE_LONG = 0.5;
 const ENTRANCE_SHORT = 0.375;
-const ANGLE_DEG = 15;
+/** Angle of the drill axis off the face *surface* (so the bit runs mostly
+ *  along the wood, gently angled into its thickness). Kreg jigs drill at
+ *  ~15° here. */
+const ANGLE_FROM_SURFACE_DEG = 15;
 /** Inset of the pocket entrance from the part's end, in inches. */
 const END_INSET = 1.5;
 
@@ -162,10 +165,18 @@ function markForPosition(
   if (Math.abs(normal.y) > 0) center.y = fy;
   if (Math.abs(normal.z) > 0) center.z = fz;
 
-  // Drill axis: starts as -normal (straight into the part), tilted by
-  // ANGLE_DEG toward the end direction. We rotate around the axis
-  // perpendicular to both normal and endDir.
-  const drillAxis = tilt(neg(normal), endDir, ANGLE_DEG);
+  // Drill axis: a real Kreg pocket runs MOSTLY along the wood toward the
+  // end-grain mate, with only a shallow tip into the panel's thickness.
+  // So start from endDir (horizontal toward the end) and tilt it slightly
+  // toward -normal (into the wood). With a 15°-from-surface angle, the
+  // bit travels along the face most of the way.
+  const drillAxis = tilt(endDir, neg(normal), ANGLE_FROM_SURFACE_DEG);
+
+  // Visual cylinder length: reach almost to the end of the part along the
+  // in-face component of the drill axis. With axis at 15° off the surface,
+  // travelling END_INSET along the face requires depth = END_INSET / cos(15°).
+  // Pull back ~10% so the tip stops just short of the end-grain face.
+  const visualDepth = (END_INSET / Math.cos((ANGLE_FROM_SURFACE_DEG * Math.PI) / 180)) * 0.9;
 
   return {
     jointId,
@@ -176,9 +187,7 @@ function markForPosition(
     longAxis,
     entranceLong: ENTRANCE_LONG,
     entranceShort: ENTRANCE_SHORT,
-    // Visualised cylinder extends 90% into the part, capped at the typical
-    // Kreg drill-collar travel of 1".
-    depth: Math.min(part.thickness * 0.9, 1.0),
+    depth: visualDepth,
   };
 }
 
