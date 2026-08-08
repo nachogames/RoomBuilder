@@ -6,3 +6,4 @@ dist/
 
 # TS incremental build cache
 tsconfig.tsbuildinfo
+.claude/

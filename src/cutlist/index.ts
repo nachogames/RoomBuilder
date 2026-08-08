@@ -1,7 +1,7 @@
 import type { StockCatalog } from "../domain/types";
 import type { Part } from "../geometry/types";
 import { packBoards, type BoardBin } from "./board";
-import { packSheets, type SheetBin } from "./sheet";
+import { packSheetsFrom, type SheetBin, type StockSheet } from "./sheet";
 
 export interface MaterialCutList {
   materialId: string;
@@ -9,7 +9,10 @@ export interface MaterialCutList {
   kind: "sheet" | "board";
   sheetBins: SheetBin[];
   boardBins: BoardBin[];
+  /** too big for any stock you listed */
   oversize: Part[];
+  /** would fit, but your on-hand quantities ran out */
+  unplaced: Part[];
   /** count of stock pieces required for this material */
   stockCount: number;
 }
@@ -18,6 +21,10 @@ export interface CutList {
   byMaterial: MaterialCutList[];
   /** total stock pieces across all materials */
   totalStock: number;
+  /** stock pieces that must still be bought (i.e. not drawn from inventory) */
+  totalToBuy: number;
+  /** true when any material ran out of on-hand stock */
+  shortfall: boolean;
 }
 
 export function buildCutList(parts: Part[], catalog: StockCatalog): CutList {
@@ -33,10 +40,20 @@ export function buildCutList(parts: Part[], catalog: StockCatalog): CutList {
     const mat = catalog.materials.find((m) => m.id === materialId);
     if (!mat) continue;
     if (mat.kind === "sheet") {
-      const stock = catalog.sheets.find((s) => s.materialId === materialId);
-      const sw = stock?.width ?? 48;
-      const sl = stock?.length ?? 96;
-      const { bins, oversize } = packSheets(gParts, sw, sl, catalog.kerf);
+      const entries = catalog.sheets.filter((s) => s.materialId === materialId);
+      const stock: StockSheet[] = entries.length
+        ? entries.map((s) => ({
+            width: s.width,
+            length: s.length,
+            ...(s.qty !== undefined ? { qty: s.qty } : {}),
+            ...(s.label !== undefined ? { label: s.label } : {}),
+          }))
+        : [{ width: 48, length: 96 }];
+      const { bins, oversize, unplaced } = packSheetsFrom(gParts, stock, {
+        kerf: catalog.kerf,
+        grainMatters: catalog.grainMatters,
+        trimAllowance: catalog.trimAllowance,
+      });
       byMaterial.push({
         materialId,
         materialName: mat.name,
@@ -44,6 +61,7 @@ export function buildCutList(parts: Part[], catalog: StockCatalog): CutList {
         sheetBins: bins,
         boardBins: [],
         oversize,
+        unplaced,
         stockCount: bins.length,
       });
     } else {
@@ -63,6 +81,7 @@ export function buildCutList(parts: Part[], catalog: StockCatalog): CutList {
         sheetBins: [],
         boardBins: bins,
         oversize,
+        unplaced: [],
         stockCount: bins.length,
       });
     }
@@ -71,5 +90,10 @@ export function buildCutList(parts: Part[], catalog: StockCatalog): CutList {
   return {
     byMaterial,
     totalStock: byMaterial.reduce((n, m) => n + m.stockCount, 0),
+    totalToBuy: byMaterial.reduce(
+      (n, m) => n + m.sheetBins.filter((b) => !b.fromInventory).length + m.boardBins.length,
+      0,
+    ),
+    shortfall: byMaterial.some((m) => m.unplaced.length > 0),
   };
 }

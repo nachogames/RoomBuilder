@@ -30,12 +30,17 @@ export function renderSummarySection(
     const stockDesc = describeStock(m, fmt);
     const usagePct = computeUsagePct(m);
     const oversize = m.oversize.length;
+    const short = m.unplaced.length;
+    const flags = [
+      oversize === 0 ? "" : `<span class="cv-oversize">${oversize} oversize</span>`,
+      short === 0 ? "" : `<span class="cv-short">${short} short on stock</span>`,
+    ].filter(Boolean).join(" ");
     return `<tr>
       <td>${escapeHtml(m.materialName)}</td>
       <td>${m.stockCount} ${m.kind === "sheet" ? "sheet" : "board"}${m.stockCount === 1 ? "" : "s"}</td>
       <td>${stockDesc}</td>
       <td>${usagePct == null ? "—" : usagePct.toFixed(0) + "%"}</td>
-      <td>${oversize === 0 ? "" : `<span class="cv-oversize">${oversize} oversize</span>`}</td>
+      <td>${flags}</td>
     </tr>`;
   }).join("");
   return `<div class="cv-summary">
@@ -48,7 +53,14 @@ export function renderSummarySection(
       <thead><tr><th>Material</th><th>Stock</th><th>Size</th><th>Used</th><th></th></tr></thead>
       <tbody>${rows}</tbody>
     </table>
-    <p class="cv-sub">Total stock pieces: ${cutList.totalStock}</p>
+    <p class="cv-sub">Total stock pieces: ${cutList.totalStock}${
+      cutList.totalStock > cutList.totalToBuy
+        ? ` — ${cutList.totalToBuy} to buy, ${cutList.totalStock - cutList.totalToBuy} from stock you already have`
+        : ""
+    }</p>
+    ${cutList.shortfall
+      ? `<p class="cv-short">Not enough stock on hand for every part — see the flagged rows above.</p>`
+      : ""}
   </div>`;
 }
 
@@ -105,10 +117,14 @@ export function renderDetailTable(cutList: CutList, fmt: Fmt): string {
       <td>${r.qty}</td>
     </tr>`).join("");
     const oversize = m.oversize.length > 0
-      ? `<p class="cv-oversize">${m.oversize.length} oversize part${m.oversize.length === 1 ? "" : "s"}: ${m.oversize.map((p) => escapeHtml(p.label)).join(", ")}</p>`
+      ? `<p class="cv-oversize">${m.oversize.length} oversize part${m.oversize.length === 1 ? "" : "s"} (too big for any stock size you listed): ${m.oversize.map((p) => escapeHtml(p.label)).join(", ")}</p>`
+      : "";
+    const short = m.unplaced.length > 0
+      ? `<p class="cv-short">${m.unplaced.length} part${m.unplaced.length === 1 ? "" : "s"} won't fit in the stock you have on hand: ${m.unplaced.map((p) => escapeHtml(p.label)).join(", ")}</p>`
       : "";
     return `<h3 class="cv-h3">${escapeHtml(m.materialName)}</h3>
       ${oversize}
+      ${short}
       <table class="cv-table">
         <thead><tr><th>Part</th><th>Length</th><th>Width</th><th>Qty</th></tr></thead>
         <tbody>${tbody}</tbody>
@@ -318,5 +334,6 @@ export const CUTLIST_VISUAL_CSS = `
 .cv-board-seg { position: absolute; top: 0; bottom: 0; border-right: 1px dashed #444; background: #e6d8b5; display: flex; align-items: center; justify-content: center; font-size: 9pt; color: #222; overflow: hidden; }
 .cv-board-leftover { position: absolute; top: 0; bottom: 0; background: repeating-linear-gradient(45deg, #fff, #fff 3px, #eee 3px, #eee 6px); display: flex; align-items: center; justify-content: center; font-size: 8pt; color: #666; }
 .cv-oversize { color: #a00; font-weight: 600; }
+.cv-short { color: #a55200; font-weight: 600; }
 .cv-sheet-block svg { display: block; margin: 0 auto; }
 `;

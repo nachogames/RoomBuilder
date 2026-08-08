@@ -32,6 +32,8 @@ export const RUNNER_PROFILES: RunnerProfile[] = [
 export function defaultCatalog(): StockCatalog {
   return {
     kerf: 0.125,
+    grainMatters: true,
+    trimAllowance: 0,
     materials: [
       { id: PLY_34, name: '3/4" Birch Plywood', kind: "sheet", thickness: 0.75 },
       { id: PLY_25, name: '1/4" Plywood (back)', kind: "sheet", thickness: 0.25 },
@@ -411,10 +413,39 @@ function dedupeIds(p: Project): Project {
 }
 
 /** Fill in fields that older saved projects may lack. */
+/** Fill in catalog fields added after a project was saved. */
+export function normalizeCatalog(c: StockCatalog | undefined): StockCatalog {
+  const base = defaultCatalog();
+  if (!c) return base;
+  return {
+    ...c,
+    kerf: num(c.kerf, 0.125),
+    grainMatters: c.grainMatters ?? true,
+    trimAllowance: num(c.trimAllowance, 0),
+    materials: c.materials ?? base.materials,
+    boards: (c.boards ?? base.boards).map((b) => ({
+      ...b,
+      width: num(b.width, 11.25),
+      length: num(b.length, 96),
+    })),
+    sheets: (c.sheets ?? base.sheets).map((s) => ({
+      ...s,
+      width: num(s.width, 48),
+      length: num(s.length, 96),
+      // undefined qty means "buy as many as needed" — preserve that, but
+      // clamp any real number to a sane non-negative integer.
+      ...(s.qty === undefined || s.qty === null
+        ? {}
+        : { qty: Math.max(0, Math.floor(num(s.qty, 0))) }),
+    })),
+  };
+}
+
 export function normalizeProject(p: Project): Project {
   return dedupeIds({
     ...p,
     units: p.units ?? "in",
+    catalog: normalizeCatalog(p.catalog),
     room: {
       ...p.room,
       length: num(p.room.length, 128),

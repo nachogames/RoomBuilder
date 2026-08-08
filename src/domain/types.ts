@@ -23,6 +23,10 @@ export interface SheetStock {
   materialId: string;
   width: Inches; // 48
   length: Inches; // 96
+  /** how many of this size you have on hand; omitted = buy as many as needed */
+  qty?: number;
+  /** optional note, e.g. "offcut from the bookcase build" */
+  label?: string;
 }
 export interface BoardStock {
   materialId: string;
@@ -36,6 +40,17 @@ export interface StockCatalog {
   sheets: SheetStock[];
   boards: BoardStock[];
   kerf: Inches; // saw kerf, e.g. 0.125
+  /**
+   * Project-level grain lock. false = parts may rotate 90° on the sheet
+   * regardless of their own grainMatters flag (paint-grade work). Often the
+   * difference between N and N-1 sheets. Default true.
+   */
+  grainMatters?: boolean;
+  /**
+   * Extra material added to both axes of every part so you can trim to final
+   * size rather than trusting a factory edge. Default 0.
+   */
+  trimAllowance?: Inches;
 }
 
 export type WallId = "N" | "S" | "E" | "W";
