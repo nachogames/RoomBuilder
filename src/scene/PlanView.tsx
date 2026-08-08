@@ -16,6 +16,7 @@ import {
   wallEdges,
 } from "../domain/room";
 import { useUnits } from "../ui/units";
+import { DIM_HINT, dimStep } from "../ui/fields";
 import { personFootprint } from "../domain/person";
 
 type Drag =
@@ -896,10 +897,25 @@ export function PlanView({
           className="dim-input"
           autoFocus
           defaultValue={edit.value}
+          title={DIM_HINT}
           style={{ left: edit.sx, top: edit.sy }}
           onKeyDown={(e) => {
             if (e.key === "Enter") (e.target as HTMLInputElement).blur();
             if (e.key === "Escape") setEdit(null);
+            if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+            e.preventDefault();
+            const el = e.target as HTMLInputElement;
+            const dir = e.key === "ArrowUp" ? 1 : -1;
+            const cur = parse(el.value);
+            if (cur == null) return;
+            const next = Math.max(
+              dimStep(units, e),
+              cur + dir * dimStep(units, e),
+            );
+            el.value =
+              units === "mm"
+                ? String(Math.round(next * 25.4))
+                : String(Math.round(next * 10000) / 10000);
           }}
           onBlur={(e) => {
             const n = parse(e.target.value);

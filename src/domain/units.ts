@@ -25,9 +25,65 @@ export function formatInches(value: Inches, denom = 16): string {
   return `${neg ? "-" : ""}${body}"`;
 }
 
-/** Parse `23 3/4`, `23.75`, `3/4`, `23-3/4` into inches. Returns null if unparseable. */
+/** Evaluate a calculator expression: + - * / parentheses, unary minus,
+ *  decimals. Returns null (never throws) on malformed input or a non-finite
+ *  result (e.g. divide by zero). Recursive descent, no eval(). */
+export function evalMathExpr(src: string): number | null {
+  const s = src.replace(/\s+/g, "");
+  if (s === "") return null;
+  let i = 0;
+  const peek = () => s[i];
+  const expr = (): number | null => {
+    let v = term();
+    if (v == null) return null;
+    while (peek() === "+" || peek() === "-") {
+      const op = s[i++];
+      const r = term();
+      if (r == null) return null;
+      v = op === "+" ? v + r : v - r;
+    }
+    return v;
+  };
+  const term = (): number | null => {
+    let v = factor();
+    if (v == null) return null;
+    while (peek() === "*" || peek() === "/") {
+      const op = s[i++];
+      const r = factor();
+      if (r == null) return null;
+      v = op === "*" ? v * r : v / r;
+    }
+    return v;
+  };
+  const factor = (): number | null => {
+    if (peek() === "-") {
+      i++;
+      const v = factor();
+      return v == null ? null : -v;
+    }
+    if (peek() === "(") {
+      i++;
+      const v = expr();
+      if (v == null || s[i] !== ")") return null;
+      i++;
+      return v;
+    }
+    const m = s.slice(i).match(/^\d*\.?\d+/);
+    if (!m) return null;
+    i += m[0].length;
+    return Number(m[0]);
+  };
+  const out = expr();
+  if (out == null || i !== s.length) return null;
+  return Number.isFinite(out) ? out : null;
+}
+
+/** Parse `23 3/4`, `23.75`, `3/4`, `23-3/4` into inches — or, with a leading
+ *  `=`, a calculator expression like `=96-5.125`. Returns null if unparseable. */
 export function parseInches(input: string): Inches | null {
-  const s = input.trim().replace(/"/g, "").replace(/-/g, " ");
+  const raw = input.trim();
+  if (raw.startsWith("=")) return evalMathExpr(raw.slice(1));
+  const s = raw.replace(/"/g, "").replace(/-/g, " ");
   if (s === "") return null;
   const m = s.match(/^(\d+)\s+(\d+)\/(\d+)$/);
   if (m) return Number(m[1]) + Number(m[2]) / Number(m[3]);

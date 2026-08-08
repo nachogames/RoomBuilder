@@ -1,5 +1,5 @@
 import type { Units } from "./types";
-import { formatInches, parseInches } from "./units";
+import { evalMathExpr, formatInches, parseInches } from "./units";
 
 const MM_PER_IN = 25.4;
 
@@ -12,7 +12,12 @@ export function formatLength(value: number, units: Units): string {
 /** Parse a user string in the active units back to internal inches. */
 export function parseLength(input: string, units: Units): number | null {
   if (units === "mm") {
-    const n = Number(input.trim().replace(/mm/i, "").trim());
+    const raw = input.trim();
+    if (raw.startsWith("=")) {
+      const v = evalMathExpr(raw.slice(1));
+      return v == null ? null : v / MM_PER_IN;
+    }
+    const n = Number(raw.replace(/mm/i, "").trim());
     return Number.isFinite(n) ? n / MM_PER_IN : null;
   }
   return parseInches(input);

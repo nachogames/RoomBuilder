@@ -1,6 +1,21 @@
 import { useState } from "react";
 import { useUnits } from "./units";
 
+/** ↑/↓ step size in inches for dimension inputs. Default ¼", Shift = 1",
+ *  Alt = 1/16" (metric: 5 / 25 / 1 mm). */
+export function dimStep(
+  units: string,
+  mods: { shiftKey: boolean; altKey: boolean },
+): number {
+  const mm = units === "mm";
+  if (mods.altKey) return mm ? 1 / 25.4 : 1 / 16;
+  if (mods.shiftKey) return mm ? 25 / 25.4 : 1;
+  return mm ? 5 / 25.4 : 0.25;
+}
+
+export const DIM_HINT =
+  'Value ("5 1/8", 5.125) or math ("=96-5.125"). ↑/↓ steps ¼" — Shift: 1", Alt: 1/16"';
+
 export function DimField({
   label,
   value,
@@ -12,7 +27,7 @@ export function DimField({
   onChange: (v: number) => void;
   allowZero?: boolean;
 }) {
-  const { fmt, parse } = useUnits();
+  const { fmt, parse, units } = useUnits();
   const [draft, setDraft] = useState<string | null>(null);
   const shown = draft ?? fmt(value).replace(/"$/, "").replace(/ mm$/, "");
   return (
@@ -20,7 +35,23 @@ export function DimField({
       <span>{label}</span>
       <input
         value={shown}
+        title={DIM_HINT}
         onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.currentTarget.blur();
+            return;
+          }
+          if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+          e.preventDefault();
+          const dir = e.key === "ArrowUp" ? 1 : -1;
+          const cur = draft != null ? parse(draft) ?? value : value;
+          const step = dimStep(units, e);
+          const floor = allowZero ? 0 : step;
+          const next = Math.max(floor, cur + dir * step);
+          setDraft(null);
+          onChange(next);
+        }}
         onBlur={() => {
           if (draft != null) {
             const n = parse(draft);
