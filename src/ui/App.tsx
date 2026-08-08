@@ -634,7 +634,7 @@ function Workspace({
       </header>
 
       <div className="body">
-        <aside className="panel">
+        <aside className="panel side-left">
           <div className="browser">
             <button
               className={`tree-row ${sel === "room" ? "on" : ""}`}
@@ -792,7 +792,9 @@ function Workspace({
                 ))}
             </div>
           </div>
+        </aside>
 
+        <aside className="panel side-right">
           <div className="inspector">
           {selection.extras.size > 0 && (
             <p className="label" style={{ opacity: 0.8 }}>
@@ -1492,16 +1494,7 @@ function Workspace({
             {tab === "3D" && (
               <div className="canvas-wrap" style={{ position: "relative" }}>
                 <label
-                  className="field"
-                  style={{
-                    position: "absolute",
-                    top: 8,
-                    left: 8,
-                    zIndex: 1,
-                    background: "#0008",
-                    padding: "4px 8px",
-                    borderRadius: 4,
-                  }}
+                  className="field viewport-chip"
                   title="Hide whichever walls sit between you and the room"
                 >
                   <span>Dollhouse</span>
