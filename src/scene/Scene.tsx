@@ -403,7 +403,9 @@ function RefBoxes({ project }: { project: Project }) {
 
 const SLAB_COLOR = {
   wall: "#e8e8ec",
-  baseboard: "#6a6a72",
+  // Same trim tone the Plan view uses for the baseboard band, so the strip an
+  // item stops against reads as the same object in both views.
+  baseboard: "#caa46a",
 } as const;
 
 function SlabMesh({ s, dollhouse }: { s: RefSlab; dollhouse: boolean }) {
@@ -442,8 +444,6 @@ function SlabMesh({ s, dollhouse }: { s: RefSlab; dollhouse: boolean }) {
       <mesh ref={ref} geometry={geom} renderOrder={-1}>
         <meshStandardMaterial
           color={SLAB_COLOR[s.kind]}
-          transparent={s.kind === "baseboard"}
-          opacity={s.kind === "baseboard" ? 0.85 : 1}
           side={THREE.DoubleSide}
         />
       </mesh>
@@ -459,12 +459,7 @@ function SlabMesh({ s, dollhouse }: { s: RefSlab; dollhouse: boolean }) {
       renderOrder={-1}
     >
       <boxGeometry args={[s.size?.x ?? 0, s.size?.y ?? 0, s.size?.z ?? 0]} />
-      <meshStandardMaterial
-        color={SLAB_COLOR[s.kind]}
-        transparent={s.kind === "baseboard"}
-        opacity={s.kind === "baseboard" ? 0.85 : 1}
-        side={2}
-      />
+      <meshStandardMaterial color={SLAB_COLOR[s.kind]} side={2} />
     </mesh>
   );
 }

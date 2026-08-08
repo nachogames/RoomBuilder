@@ -8,6 +8,8 @@ import { carcassRoomRect } from "./placement";
 import {
   baseboardLengthInches,
   centroid,
+  collisionWalls,
+  innerOffsetVertices,
   setWallLength,
   setJutDepthSymmetric,
   rectInsideRoom,
@@ -166,9 +168,10 @@ export function PlanView({
       // footprint through a wall, so you can still run along it. The
       // footprint includes the surface-mounted back panel hanging off the
       // carcass's rear.
+      const cWalls = collisionWalls(room, c.baseHeight ?? 0);
       const ok = (px: number, pz: number) => {
         const r = carcassRoomRect(c, project, px, pz);
-        return rectInsideRoom(walls, r.cx, r.cz, r.w, r.d, c.rotationDeg);
+        return rectInsideRoom(cWalls, r.cx, r.cz, r.w, r.d, c.rotationDeg);
       };
       const p0 = c.position;
       const pos = resolveMove(ok, tx, tz, p0, false);
@@ -195,7 +198,14 @@ export function PlanView({
         project,
       );
       const ok = (px: number, pz: number) =>
-        rectInsideRoom(walls, px, pz, r.length, r.depth, r.rotationDeg);
+        rectInsideRoom(
+          collisionWalls(room, r.baseHeight ?? 0),
+          px,
+          pz,
+          r.length,
+          r.depth,
+          r.rotationDeg,
+        );
       // Wall-slide when a respecting position exists, but NEVER freeze: a long
       // shelf that can't fit any in-room position still follows the cursor.
       const pos = container
@@ -231,7 +241,14 @@ export function PlanView({
       const bd = Math.max(bx.depth, bx.topDepth ?? bx.depth);
       const p0 = bx.position;
       const okFn = (px: number, pz: number) =>
-        rectInsideRoom(walls, px, pz, bw, bd, bx.rotationDeg);
+        rectInsideRoom(
+          collisionWalls(room, bx.baseHeight ?? 0),
+          px,
+          pz,
+          bw,
+          bd,
+          bx.rotationDeg,
+        );
       const container = findContainer(
         { id: bx.id, w: bw, d: bd, cx: tx, cz: tz, rotationDeg: bx.rotationDeg, prevPos: p0 },
         project,
@@ -293,7 +310,14 @@ export function PlanView({
       const fp = personFootprint(pn);
       const p0 = pn.position;
       const ok = (px: number, pz: number) =>
-        rectInsideRoom(walls, px, pz, fp.width, fp.depth, pn.rotationDeg);
+        rectInsideRoom(
+          collisionWalls(room, pn.baseHeight ?? 0),
+          px,
+          pz,
+          fp.width,
+          fp.depth,
+          pn.rotationDeg,
+        );
       const pos = resolveMove(ok, tx, tz, p0, false);
       if (pos === p0) return;
       setProject((pr) => ({
@@ -427,6 +451,26 @@ export function PlanView({
           stroke="#5b86ad"
           strokeWidth={S}
         />
+
+        {/* baseboard band: the strip items at floor level can't enter. Drawn
+            as wall polygon minus the inward-offset polygon (even-odd fill). */}
+        {room.baseboard && room.baseboard.thickness > 0 && (() => {
+          const inner = innerOffsetVertices(walls, room.baseboard.thickness);
+          const ring = (pts: Pt[]) =>
+            `M ${pts.map((p) => `${p.x} ${p.z}`).join(" L ")} Z`;
+          return (
+            <path
+              d={`${ring(walls)} ${ring(inner)}`}
+              fillRule="evenodd"
+              fill="#caa46a"
+              fillOpacity={0.35}
+              stroke="#caa46a"
+              strokeOpacity={0.6}
+              strokeWidth={S * 0.6}
+              pointerEvents="none"
+            />
+          );
+        })()}
 
         {/* runners / desktops (draggable; drags the desk group) */}
         {project.runners.map((r) => (

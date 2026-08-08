@@ -73,6 +73,15 @@ export function innerOffsetVertices(walls: Pt[], d: number): Pt[] {
   return offsetVertices(walls, d, inward);
 }
 
+/** The polygon an item's footprint must stay inside, given the item's bottom
+ *  elevation. A baseboard narrows the room by its thickness for anything low
+ *  enough to hit it; items whose underside clears the board reach the wall. */
+export function collisionWalls(room: Room, itemBaseY: number): Pt[] {
+  const bb = room.baseboard;
+  if (!bb || bb.thickness <= 0 || itemBaseY >= bb.height) return room.walls;
+  return innerOffsetVertices(room.walls, bb.thickness);
+}
+
 /** Closed-polygon edges as [from, to] pairs. */
 export function wallEdges(walls: Pt[]): Array<[Pt, Pt]> {
   return walls.map((p, i) => [p, walls[(i + 1) % walls.length]]);

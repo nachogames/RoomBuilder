@@ -1,6 +1,6 @@
 import type { Project, RefBox } from "../domain/types";
 import { rectAABB, type AABB } from "./group";
-import { rectInsideRoom } from "../domain/room";
+import { collisionWalls, rectInsideRoom } from "../domain/room";
 import { findContainer, clampToInterior } from "./container";
 import { materialThickness } from "./types";
 
@@ -123,7 +123,16 @@ function validatePos(
   project: Project,
 ): boolean {
   const { w, d } = outerWD(b);
-  if (!rectInsideRoom(project.room.walls, pos.x, pos.z, w, d, b.rotationDeg))
+  if (
+    !rectInsideRoom(
+      collisionWalls(project.room, b.baseHeight ?? 0),
+      pos.x,
+      pos.z,
+      w,
+      d,
+      b.rotationDeg,
+    )
+  )
     return false;
   const container = findContainer(
     { id: b.id, w, d, cx: pos.x, cz: pos.z, rotationDeg: b.rotationDeg, prevPos: prev },

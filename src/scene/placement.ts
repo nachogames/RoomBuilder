@@ -1,5 +1,5 @@
 import type { Project, Carcass, Runner, RefBox, Person, Pt } from "../domain/types";
-import { rectInsideRoom } from "../domain/room";
+import { collisionWalls, rectInsideRoom } from "../domain/room";
 import { snapHeight, dependentsOf, shelfSurfaceId } from "../geometry/stacking";
 import { materialThickness } from "../geometry/types";
 import { resolveMove } from "./dragMath";
@@ -119,9 +119,10 @@ function dropCarcass(project: Project, id: string, t: DropTarget): DropResult {
   const rotated: Carcass = t.rotationDeg !== undefined
     ? { ...c, rotationDeg: t.rotationDeg }
     : c;
+  const cWalls = collisionWalls(project.room, c.baseHeight ?? 0);
   const ok = (px: number, pz: number) => {
     const r = carcassRoomRect(rotated, project, px, pz);
-    return rectInsideRoom(project.room.walls, r.cx, r.cz, r.w, r.d, rotated.rotationDeg);
+    return rectInsideRoom(cWalls, r.cx, r.cz, r.w, r.d, rotated.rotationDeg);
   };
   const pos = resolveMove(ok, t.x, t.z, c.position, false);
   const next: Carcass = { ...rotated, position: pos };
@@ -162,7 +163,14 @@ function dropRunner(project: Project, id: string, t: DropTarget): DropResult {
     project,
   );
   const ok = (px: number, pz: number) =>
-    rectInsideRoom(project.room.walls, px, pz, r.length, r.depth, r.rotationDeg);
+    rectInsideRoom(
+      collisionWalls(project.room, r.baseHeight ?? 0),
+      px,
+      pz,
+      r.length,
+      r.depth,
+      r.rotationDeg,
+    );
   const pos = container
     ? clampToInterior(container, r.length, r.depth, t.x, t.z, project, r.rotationDeg)
     : resolveMove(ok, t.x, t.z, r.position, true);
@@ -214,7 +222,14 @@ function dropRefBox(project: Project, id: string, t: DropTarget): DropResult {
     project,
   );
   const okFn = (px: number, pz: number) =>
-    rectInsideRoom(project.room.walls, px, pz, bw, bd, bx.rotationDeg);
+    rectInsideRoom(
+      collisionWalls(project.room, bx.baseHeight ?? 0),
+      px,
+      pz,
+      bw,
+      bd,
+      bx.rotationDeg,
+    );
   const clampTarget: Pt = container
     ? clampToInterior(container, bw, bd, t.x, t.z, project, bx.rotationDeg)
     : resolveMove(okFn, t.x, t.z, bx.position, false);
@@ -255,7 +270,14 @@ function dropPerson(project: Project, id: string, t: DropTarget): DropResult {
     : pnOrig;
   const fp = personFootprint(pn);
   const ok = (px: number, pz: number) =>
-    rectInsideRoom(project.room.walls, px, pz, fp.width, fp.depth, pn.rotationDeg);
+    rectInsideRoom(
+      collisionWalls(project.room, pn.baseHeight ?? 0),
+      px,
+      pz,
+      fp.width,
+      fp.depth,
+      pn.rotationDeg,
+    );
   const pos = resolveMove(ok, t.x, t.z, pn.position, false);
   const next: Person = { ...pn, position: pos };
   return {
