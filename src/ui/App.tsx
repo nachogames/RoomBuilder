@@ -852,7 +852,7 @@ function Workspace({
                   room: {
                     ...p.room,
                     baseboard: e.target.checked
-                      ? { height: 3.5, thickness: 0.5 }
+                      ? { height: 5.125, thickness: 0.5 }
                       : null,
                   },
                 }))

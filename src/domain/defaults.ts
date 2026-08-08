@@ -280,7 +280,7 @@ export function myRoom(): Project {
         { x: 126, z: 106 },
         { x: 0, z: 106 },
       ],
-      baseboard: { height: 5.5, thickness: 0.5 },
+      baseboard: { height: 5.125, thickness: 0.5 },
     },
     carcasses: [left, right],
     runners: [desktop],
@@ -301,7 +301,7 @@ export function defaultProject(): Project {
       ceilingHeight: 96,
       wallThickness: 4.5,
       walls: rectWalls(128, 120),
-      baseboard: { height: 3.5, thickness: 0.5 },
+      baseboard: { height: 5.125, thickness: 0.5 },
     },
     carcasses: [defaultBookcase()],
     runners: [],
@@ -460,7 +460,7 @@ export function normalizeProject(p: Project): Project {
         p.room.baseboard === undefined || p.room.baseboard === null
           ? { height: 3.5, thickness: 0.5 }
           : {
-              height: num(p.room.baseboard.height, 3.5),
+              height: num(p.room.baseboard.height, 5.125),
               thickness: num(p.room.baseboard.thickness, 0.5),
             },
     },

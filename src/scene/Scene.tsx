@@ -427,9 +427,9 @@ function RefBoxes({
 
 const SLAB_COLOR = {
   wall: "#e8e8ec",
-  // Same trim tone the Plan view uses for the baseboard band, so the strip an
-  // item stops against reads as the same object in both views.
-  baseboard: "#caa46a",
+  // Painted-white trim, brighter than the walls so the strip an item stops
+  // against still reads as its own object. Plan uses the same white band.
+  baseboard: "#ffffff",
 } as const;
 
 function SlabMesh({ s, dollhouse }: { s: RefSlab; dollhouse: boolean }) {

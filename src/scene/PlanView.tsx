@@ -465,10 +465,10 @@ export function PlanView({
             <path
               d={`${ring(walls)} ${ring(inner)}`}
               fillRule="evenodd"
-              fill="#caa46a"
-              fillOpacity={0.35}
-              stroke="#caa46a"
-              strokeOpacity={0.6}
+              fill="#ffffff"
+              fillOpacity={0.3}
+              stroke="#ffffff"
+              strokeOpacity={0.55}
               strokeWidth={S * 0.6}
               pointerEvents="none"
             />
