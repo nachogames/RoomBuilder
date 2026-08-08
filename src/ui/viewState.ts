@@ -8,6 +8,8 @@ export interface ViewState {
   /** name of the last-opened saved project, to reload on startup */
   project?: string;
   cam?: { pos: number[]; target: number[] };
+  /** ids hidden via the browser-tree eye toggles (shared by Plan and 3D) */
+  hidden?: string[];
 }
 
 export function loadViewState(): ViewState {

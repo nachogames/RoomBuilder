@@ -242,17 +242,25 @@ function RunnerGroup({ r, parts }: { r: Runner; parts: Part[] }) {
   );
 }
 
-function RunnerMeshes({ project }: { project: Project }) {
+function RunnerMeshes({
+  project,
+  hidden,
+}: {
+  project: Project;
+  hidden: ReadonlySet<string>;
+}) {
   const groups = useMemo(
     () =>
-      project.runners.map((r) => ({
-        r,
-        parts: buildRunner(r, project.carcasses, project.catalog, {
-          surfaceUnder: (x, z, maxY) =>
-            surfaceUnderPoint(x, z, maxY, project, r.id),
-        }).parts,
-      })),
-    [project],
+      project.runners
+        .filter((r) => !hidden.has(r.id))
+        .map((r) => ({
+          r,
+          parts: buildRunner(r, project.carcasses, project.catalog, {
+            surfaceUnder: (x, z, maxY) =>
+              surfaceUnderPoint(x, z, maxY, project, r.id),
+          }).parts,
+        })),
+    [project, hidden],
   );
   return (
     <>
@@ -381,22 +389,38 @@ function PersonMesh({ p }: { p: Person }) {
   );
 }
 
-function People({ project }: { project: Project }) {
+function People({
+  project,
+  hidden,
+}: {
+  project: Project;
+  hidden: ReadonlySet<string>;
+}) {
   return (
     <>
-      {project.people.map((p) => (
-        <PersonMesh key={p.id} p={p} />
-      ))}
+      {project.people
+        .filter((p) => !hidden.has(p.id))
+        .map((p) => (
+          <PersonMesh key={p.id} p={p} />
+        ))}
     </>
   );
 }
 
-function RefBoxes({ project }: { project: Project }) {
+function RefBoxes({
+  project,
+  hidden,
+}: {
+  project: Project;
+  hidden: ReadonlySet<string>;
+}) {
   return (
     <>
-      {project.refBoxes.map((b) => (
-        <ToteMesh key={b.id} b={b} />
-      ))}
+      {project.refBoxes
+        .filter((b) => !hidden.has(b.id))
+        .map((b) => (
+          <ToteMesh key={b.id} b={b} />
+        ))}
     </>
   );
 }
@@ -910,6 +934,7 @@ function KeyboardNudge({
 export function Scene({
   project,
   dollhouse = true,
+  hidden = new Set<string>(),
   sel = "",
   extras = new Set<string>(),
   subSel = null,
@@ -922,6 +947,8 @@ export function Scene({
 }: {
   project: Project;
   dollhouse?: boolean;
+  /** Ids hidden via the browser-tree eye toggles; not rendered at all. */
+  hidden?: ReadonlySet<string>;
   sel?: string;
   /** Additional items in a multi-selection. Same outline as `sel`. */
   extras?: ReadonlySet<string>;
@@ -1011,18 +1038,20 @@ export function Scene({
           <ambientLight intensity={0.6} />
           <directionalLight position={[100, 200, 120]} intensity={1.1} castShadow />
           <RoomShell project={project} dollhouse={dollhouse} />
-          {project.carcasses.map((c) => (
-            <CarcassGroup key={c.id} carcass={c} project={project} />
-          ))}
-          <RunnerMeshes project={project} />
-          <RefBoxes project={project} />
-          <People project={project} />
+          {project.carcasses
+            .filter((c) => !hidden.has(c.id))
+            .map((c) => (
+              <CarcassGroup key={c.id} carcass={c} project={project} />
+            ))}
+          <RunnerMeshes project={project} hidden={hidden} />
+          <RefBoxes project={project} hidden={hidden} />
+          <People project={project} hidden={hidden} />
           <DeselectPlane span={span} onSelect={onSelect} />
           <MoveGizmo
             project={project}
             sel={sel}
-            subSel={subSel}
-            kind={kind}
+            subSel={hidden.has(subSel?.carcassId ?? "") ? null : subSel}
+            kind={hidden.has(sel) ? null : kind}
             onPatchEntity={onPatchEntity}
             onPatchShelf={onPatchShelf}
             onCommitHistory={onCommitHistory}
@@ -1030,7 +1059,7 @@ export function Scene({
           />
           <KeyboardNudge
             sel={sel}
-            kind={kind}
+            kind={hidden.has(sel) ? null : kind}
             resolve={resolveCurrent}
             onPatchEntity={onPatchEntity}
             onSelect={onSelect}

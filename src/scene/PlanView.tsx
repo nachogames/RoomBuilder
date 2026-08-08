@@ -57,11 +57,14 @@ export function PlanView({
   project,
   setProject,
   showDims,
+  hidden = new Set<string>(),
   onSelect,
 }: {
   project: Project;
   setProject: React.Dispatch<React.SetStateAction<Project>>;
   showDims: boolean;
+  /** Ids hidden via the browser-tree eye toggles; not drawn or draggable. */
+  hidden?: ReadonlySet<string>;
   onSelect: (id: string) => void;
 }) {
   const { fmt, parse, units } = useUnits();
@@ -473,7 +476,7 @@ export function PlanView({
         })()}
 
         {/* runners / desktops (draggable; drags the desk group) */}
-        {project.runners.map((r) => (
+        {project.runners.filter((r) => !hidden.has(r.id)).map((r) => (
           <g key={r.id}>
             <g
               transform={`rotate(${r.rotationDeg} ${r.position.x} ${r.position.z})`}
@@ -554,7 +557,7 @@ export function PlanView({
         ))}
 
         {/* carcasses */}
-        {project.carcasses.map((cc) => (
+        {project.carcasses.filter((cc) => !hidden.has(cc.id)).map((cc) => (
           <g key={cc.id}>
             <g
               transform={`rotate(${cc.rotationDeg} ${cc.position.x} ${cc.position.z})`}
@@ -667,7 +670,7 @@ export function PlanView({
         ))}
 
         {/* totes */}
-        {project.refBoxes.map((b) => (
+        {project.refBoxes.filter((b) => !hidden.has(b.id)).map((b) => (
           <g
             key={b.id}
             transform={`rotate(${b.rotationDeg} ${b.position.x} ${b.position.z})`}
@@ -734,7 +737,7 @@ export function PlanView({
         ))}
 
         {/* people — oval footprint with a tick on the +Z side (facing forward) */}
-        {project.people.map((pn) => {
+        {project.people.filter((pn) => !hidden.has(pn.id)).map((pn) => {
           const fp = personFootprint(pn);
           const color = "#8aa0a8"; // muted cool gray
           return (

@@ -63,13 +63,30 @@ footer { padding: 6px 12px; color: #888; background: #1d1d22; border-top: 1px so
 }
 .tree-head span button, .tree-head > button:last-child { font-size: 11px; padding: 2px 6px; }
 .tree-row {
-  display: block; width: 100%; text-align: left; background: none;
+  display: flex; align-items: center; justify-content: space-between;
+  width: 100%; text-align: left; background: none;
   border: none; color: #d4d4dc; padding: 4px 8px; border-radius: 5px;
-  cursor: pointer; font-size: 13px;
+  cursor: pointer; font-size: 13px; user-select: none;
 }
 .tree-row:hover { background: #24242b; }
 .tree-row.on { background: #f0a; color: #1a1a1a; }
 .tree-row.sub { padding-left: 20px; color: #9a9aa6; font-size: 12px; }
+.tree-row.dim .tree-label { opacity: 0.45; }
+.tree-label {
+  flex: 1; min-width: 0; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+}
+/* visibility eye — only obvious on hover / when the item is hidden */
+.eye {
+  display: inline-flex; align-items: center; justify-content: center;
+  background: none; border: none; padding: 2px; margin-left: 6px;
+  color: #6a6a76; border-radius: 4px; line-height: 0;
+}
+.eye:hover { background: none; color: #e8e8ea; }
+.eye.off { color: #ff9f43; }
+.tree-row.on .eye { color: #1a1a1acc; }
+.tree-row:not(:hover) .eye:not(.off) { opacity: 0.35; }
+.tree-head-actions { display: inline-flex; align-items: center; gap: 4px; }
 .inspector { }
 .inspector h3 { margin: 4px 0 6px; color: #f0a; font-size: 14px; }
 .sub { border: 1px solid #2c2c33; border-radius: 8px; padding: 8px; margin: 8px 0; background: #15151a; }
@@ -95,3 +112,25 @@ footer { padding: 6px 12px; color: #888; background: #1d1d22; border-top: 1px so
   z-index: 5;
 }
 .panel .row span button { font-size: 12px; padding: 3px 7px; }
+
+/* --- cutting settings / stock inventory (Materials tab) --- */
+.stock-settings {
+  display: flex; flex-wrap: wrap; gap: 14px 20px; align-items: flex-end;
+  margin: 8px 0 10px;
+}
+.stock-settings label {
+  display: flex; flex-direction: column; gap: 4px;
+  font-size: 11px; color: #9a9aa6;
+}
+.stock-settings label input[type="number"] { width: 96px; }
+.stock-settings label.stock-check {
+  flex-direction: row; align-items: center; gap: 7px;
+  font-size: 13px; color: #e8e8ee; cursor: pointer; padding-bottom: 5px;
+}
+.stock-settings label.stock-check input { cursor: pointer; }
+.stock-hint { font-size: 11px; color: #7d7d8a; margin: 0 0 4px; max-width: 62ch; line-height: 1.5; }
+.stock-dim { color: #5c5c66; }
+.stock-remove { font-size: 13px; line-height: 1; padding: 2px 7px; color: #9a9aa6; }
+.stock-remove:hover { color: #ff7a7a; border-color: #ff7a7a; }
+.stock-add { display: flex; align-items: center; gap: 12px; margin-top: 8px; }
+.stock-add .stock-hint { margin: 0; }

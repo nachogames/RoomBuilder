@@ -49,6 +49,7 @@ import {
   renderBoardMaterial,
   renderDetailTable as renderCutlistDetailTable,
   renderSheetSvg,
+  renderSummarySection as renderCutlistSummary,
   sheetHeading,
   sheetSubtitle,
 } from "./cutlistVisual";
@@ -91,6 +92,89 @@ const SUPPORT_KINDS: readonly SupportKind[] = [
   "cleat",
 ];
 type Tab = "3D" | "Plan" | "Assembly" | "Cut list" | "Pocket plan" | "Materials";
+
+/** Fusion-style visibility eye. Sits inside a tree row; stops propagation so
+ *  toggling never changes the selection. */
+function EyeButton({
+  hidden,
+  onToggle,
+}: {
+  hidden: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      className={`eye ${hidden ? "off" : ""}`}
+      title={hidden ? "Show in Plan & 3D" : "Hide in Plan & 3D"}
+      onClick={(e) => {
+        e.stopPropagation();
+        onToggle();
+      }}
+    >
+      <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
+        <path
+          d="M2 12c2.6-4.4 6-6.5 10-6.5S19.4 7.6 22 12c-2.6 4.4-6 6.5-10 6.5S4.6 16.4 2 12Z"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+        />
+        <circle cx="12" cy="12" r="2.6" fill="currentColor" />
+        {hidden && (
+          <line
+            x1="4"
+            y1="20"
+            x2="20"
+            y2="4"
+            stroke="currentColor"
+            strokeWidth="2"
+          />
+        )}
+      </svg>
+    </button>
+  );
+}
+
+/** Browser-tree row: select on click, with an optional visibility eye.
+ *  A div (not a button) because the eye is itself a button. */
+function TreeRow({
+  icon,
+  label,
+  on,
+  hidden,
+  sub,
+  onClick,
+  onToggleHidden,
+}: {
+  icon: string;
+  label: string;
+  on: boolean;
+  hidden?: boolean;
+  sub?: boolean;
+  onClick: () => void;
+  onToggleHidden?: () => void;
+}) {
+  return (
+    <div
+      className={`tree-row ${on ? "on" : ""} ${hidden ? "dim" : ""} ${sub ? "sub" : ""}`}
+      role="button"
+      tabIndex={0}
+      onClick={onClick}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick();
+        }
+      }}
+    >
+      <span className="tree-label">
+        {icon} {label}
+      </span>
+      {onToggleHidden && (
+        <EyeButton hidden={!!hidden} onToggle={onToggleHidden} />
+      )}
+    </div>
+  );
+}
 
 /** Placement controls shared by carcasses, runners (desktops) and totes. */
 interface Placeable {
@@ -216,6 +300,30 @@ function Workspace({
     setSelection(replaceSel(id));
   };
   const selectionIds = useMemo(() => unionIds(selection), [selection]);
+  // Visibility eyes: hidden ids apply to BOTH Plan and 3D (one shared set,
+  // persisted in view state so it survives reload). Hidden ≠ deleted — cut
+  // list, BOM and collision still see the item.
+  const [hiddenIds, setHiddenIds] = useState<Set<string>>(
+    () => new Set(view0.hidden ?? []),
+  );
+  const toggleHidden = (id: string) =>
+    setHiddenIds((h) => {
+      const n = new Set(h);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
+  // Group eye: hide all, unless everything is already hidden — then show all.
+  const toggleHiddenGroup = (ids: string[]) =>
+    setHiddenIds((h) => {
+      const n = new Set(h);
+      const allHidden = ids.length > 0 && ids.every((id) => n.has(id));
+      for (const id of ids) {
+        if (allHidden) n.delete(id);
+        else n.add(id);
+      }
+      return n;
+    });
   const [collapse, setCollapse] = useState<Record<string, boolean>>({});
   const [tab, setTab] = useState<Tab>((view0.tab as Tab) ?? "3D");
   const [showDims, setShowDims] = useState(true);
@@ -316,8 +424,12 @@ function Workspace({
   }, []);
 
   useEffect(() => {
-    saveViewState({ tab, sel: serializeSel(selection) });
-  }, [tab, selection]);
+    saveViewState({
+      tab,
+      sel: serializeSel(selection),
+      hidden: [...hiddenIds],
+    });
+  }, [tab, selection, hiddenIds]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -537,20 +649,32 @@ function Workspace({
                   {collapse.cases ? "▸" : "▾"} Bookcases (
                   {project.carcasses.length})
                 </button>
-                <span>
+                <span className="tree-head-actions">
+                  {project.carcasses.length > 0 && (
+                    <EyeButton
+                      hidden={project.carcasses.every((c) =>
+                        hiddenIds.has(c.id),
+                      )}
+                      onToggle={() =>
+                        toggleHiddenGroup(project.carcasses.map((c) => c.id))
+                      }
+                    />
+                  )}
                   <button onClick={addBookcase}>+ Case</button>{" "}
                   <button onClick={addDesk}>+ Desk</button>
                 </span>
               </div>
               {!collapse.cases &&
                 project.carcasses.map((c) => (
-                  <button
+                  <TreeRow
                     key={c.id}
-                    className={`tree-row ${sel === c.id ? "on" : ""}`}
+                    icon="▫"
+                    label={c.label}
+                    on={sel === c.id}
+                    hidden={hiddenIds.has(c.id)}
                     onClick={() => setSel(c.id)}
-                  >
-                    ▫ {c.label}
-                  </button>
+                    onToggleHidden={() => toggleHidden(c.id)}
+                  />
                 ))}
             </div>
 
@@ -560,27 +684,41 @@ function Workspace({
                   {collapse.runners ? "▸" : "▾"} Runners (
                   {project.runners.length})
                 </button>
-                <button onClick={addRunner}>+ Runner</button>
+                <span className="tree-head-actions">
+                  {project.runners.length > 0 && (
+                    <EyeButton
+                      hidden={project.runners.every((r) =>
+                        hiddenIds.has(r.id),
+                      )}
+                      onToggle={() =>
+                        toggleHiddenGroup(project.runners.map((r) => r.id))
+                      }
+                    />
+                  )}
+                  <button onClick={addRunner}>+ Runner</button>
+                </span>
               </div>
               {!collapse.runners &&
                 project.runners.map((r) => (
                   <div key={r.id}>
-                    <button
-                      className={`tree-row ${sel === r.id ? "on" : ""}`}
+                    <TreeRow
+                      icon="▭"
+                      label={r.label}
+                      on={sel === r.id}
+                      hidden={hiddenIds.has(r.id)}
                       onClick={() => setSel(r.id)}
-                    >
-                      ▭ {r.label}
-                    </button>
+                      onToggleHidden={() => toggleHidden(r.id)}
+                    />
                     {r.supports.map((s, i) => (
-                      <button
+                      <TreeRow
                         key={s.id}
-                        className={`tree-row sub ${
-                          sel === `sup:${r.id}:${s.id}` ? "on" : ""
-                        }`}
+                        icon="└"
+                        label={`${s.kind} #${i + 1}`}
+                        sub
+                        on={sel === `sup:${r.id}:${s.id}`}
+                        hidden={hiddenIds.has(r.id)}
                         onClick={() => setSel(`sup:${r.id}:${s.id}`)}
-                      >
-                        └ {s.kind} #{i + 1}
-                      </button>
+                      />
                     ))}
                   </div>
                 ))}
@@ -592,17 +730,31 @@ function Workspace({
                   {collapse.totes ? "▸" : "▾"} Totes (
                   {project.refBoxes.length})
                 </button>
-                <button onClick={addTote}>+ Tote</button>
+                <span className="tree-head-actions">
+                  {project.refBoxes.length > 0 && (
+                    <EyeButton
+                      hidden={project.refBoxes.every((b) =>
+                        hiddenIds.has(b.id),
+                      )}
+                      onToggle={() =>
+                        toggleHiddenGroup(project.refBoxes.map((b) => b.id))
+                      }
+                    />
+                  )}
+                  <button onClick={addTote}>+ Tote</button>
+                </span>
               </div>
               {!collapse.totes &&
                 project.refBoxes.map((b) => (
-                  <button
+                  <TreeRow
                     key={b.id}
-                    className={`tree-row ${sel === b.id ? "on" : ""}`}
+                    icon="▢"
+                    label={b.label}
+                    on={sel === b.id}
+                    hidden={hiddenIds.has(b.id)}
                     onClick={() => setSel(b.id)}
-                  >
-                    ▢ {b.label}
-                  </button>
+                    onToggleHidden={() => toggleHidden(b.id)}
+                  />
                 ))}
             </div>
 
@@ -612,17 +764,31 @@ function Workspace({
                   {collapse.people ? "▸" : "▾"} People (
                   {project.people.length})
                 </button>
-                <button onClick={addPerson}>+ Person</button>
+                <span className="tree-head-actions">
+                  {project.people.length > 0 && (
+                    <EyeButton
+                      hidden={project.people.every((p) =>
+                        hiddenIds.has(p.id),
+                      )}
+                      onToggle={() =>
+                        toggleHiddenGroup(project.people.map((p) => p.id))
+                      }
+                    />
+                  )}
+                  <button onClick={addPerson}>+ Person</button>
+                </span>
               </div>
               {!collapse.people &&
                 project.people.map((pn) => (
-                  <button
+                  <TreeRow
                     key={pn.id}
-                    className={`tree-row ${sel === pn.id ? "on" : ""}`}
+                    icon="☻"
+                    label={pn.label}
+                    on={sel === pn.id}
+                    hidden={hiddenIds.has(pn.id)}
                     onClick={() => setSel(pn.id)}
-                  >
-                    ☻ {pn.label}
-                  </button>
+                    onToggleHidden={() => toggleHidden(pn.id)}
+                  />
                 ))}
             </div>
           </div>
@@ -1348,6 +1514,7 @@ function Workspace({
                 <Scene
                   project={project}
                   dollhouse={dollhouse}
+                  hidden={hiddenIds}
                   sel={sel}
                   extras={selection.extras}
                   subSel={subSel}
@@ -1379,6 +1546,7 @@ function Workspace({
                 project={project}
                 setProject={setProject}
                 showDims={showDims}
+                hidden={hiddenIds}
                 onSelect={setSel}
               />
             )}
@@ -1419,6 +1587,15 @@ function Workspace({
                         Open printable view
                       </button>
                     </div>
+                    <div
+                      dangerouslySetInnerHTML={{
+                        __html: renderCutlistSummary(
+                          [],
+                          selectedCutList,
+                          (n) => formatLength(n, project.units),
+                        ),
+                      }}
+                    />
                     {selectedCutList.byMaterial.map((m) => {
                       const f = (n: number) => formatLength(n, project.units);
                       if (m.kind === "sheet") {
@@ -1504,7 +1681,68 @@ function Workspace({
 
             {tab === "Materials" && (
               <div className="report">
-                <h3>Stock (edit width & length to match what you have)</h3>
+                <h3>Cutting settings</h3>
+                <div className="stock-settings">
+                  <label>
+                    Saw kerf (in)
+                    <input
+                      type="number"
+                      step={0.0078125}
+                      min={0}
+                      value={project.catalog.kerf}
+                      onChange={(e) =>
+                        setProject((p) => ({
+                          ...p,
+                          catalog: { ...p.catalog, kerf: Number(e.target.value) },
+                        }))
+                      }
+                    />
+                  </label>
+                  <label>
+                    Trim allowance (in)
+                    <input
+                      type="number"
+                      step={0.0625}
+                      min={0}
+                      value={project.catalog.trimAllowance ?? 0}
+                      onChange={(e) =>
+                        setProject((p) => ({
+                          ...p,
+                          catalog: {
+                            ...p.catalog,
+                            trimAllowance: Math.max(0, Number(e.target.value)),
+                          },
+                        }))
+                      }
+                    />
+                  </label>
+                  <label className="stock-check">
+                    <input
+                      type="checkbox"
+                      checked={project.catalog.grainMatters !== false}
+                      onChange={(e) =>
+                        setProject((p) => ({
+                          ...p,
+                          catalog: { ...p.catalog, grainMatters: e.target.checked },
+                        }))
+                      }
+                    />
+                    Grain direction matters
+                  </label>
+                </div>
+                <p className="stock-hint">
+                  {project.catalog.grainMatters !== false
+                    ? "Parts keep their grain orientation. Uncheck for paint-grade work — letting parts rotate 90° often saves a whole sheet."
+                    : "Parts may rotate 90° on the sheet. Face grain will run across some parts."}
+                  {" "}
+                  {(project.catalog.trimAllowance ?? 0) > 0
+                    ? `Every part is nested ${fmt(project.catalog.trimAllowance ?? 0)} oversize on both axes so you can trim to final size.`
+                    : "Trim allowance 0: parts are nested at final size, so a full-length part relies on the factory edge."}
+                </p>
+
+                <h3 style={{ marginTop: 16 }}>
+                  Stock (sizes and how many you have)
+                </h3>
                 <table>
                   <thead>
                     <tr>
@@ -1512,6 +1750,8 @@ function Workspace({
                       <th>Item</th>
                       <th>Width (in)</th>
                       <th>Length (in)</th>
+                      <th>Qty</th>
+                      <th></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1559,6 +1799,8 @@ function Workspace({
                             }
                           />
                         </td>
+                        <td className="stock-dim">—</td>
+                        <td />
                       </tr>
                     ))}
                     {project.catalog.sheets.map((s, i) => {
@@ -1609,11 +1851,91 @@ function Workspace({
                               }
                             />
                           </td>
+                          <td>
+                            <input
+                              type="number"
+                              step={1}
+                              min={0}
+                              placeholder="any"
+                              title="Blank = buy as many as needed"
+                              value={s.qty ?? ""}
+                              onChange={(e) => {
+                                const raw = e.target.value;
+                                setProject((p) => ({
+                                  ...p,
+                                  catalog: {
+                                    ...p.catalog,
+                                    sheets: p.catalog.sheets.map((x, k) => {
+                                      if (k !== i) return x;
+                                      if (raw === "") {
+                                        const { qty: _drop, ...rest } = x;
+                                        return rest;
+                                      }
+                                      return {
+                                        ...x,
+                                        qty: Math.max(0, Math.floor(Number(raw))),
+                                      };
+                                    }),
+                                  },
+                                }));
+                              }}
+                            />
+                          </td>
+                          <td>
+                            <button
+                              className="stock-remove"
+                              title="Remove this stock size"
+                              onClick={() =>
+                                setProject((p) => ({
+                                  ...p,
+                                  catalog: {
+                                    ...p.catalog,
+                                    sheets: p.catalog.sheets.filter((_, k) => k !== i),
+                                  },
+                                }))
+                              }
+                            >
+                              ×
+                            </button>
+                          </td>
                         </tr>
                       );
                     })}
                   </tbody>
                 </table>
+                <div className="stock-add">
+                  <button
+                    onClick={() => {
+                      const sheetMats = project.catalog.materials.filter(
+                        (m) => m.kind === "sheet",
+                      );
+                      const first = sheetMats[0];
+                      if (!first) return;
+                      setProject((p) => ({
+                        ...p,
+                        catalog: {
+                          ...p.catalog,
+                          sheets: [
+                            ...p.catalog.sheets,
+                            {
+                              materialId: first.id,
+                              width: 48,
+                              length: 96,
+                              qty: 1,
+                              label: "offcut",
+                            },
+                          ],
+                        },
+                      }));
+                    }}
+                  >
+                    + Add sheet size
+                  </button>
+                  <span className="stock-hint">
+                    Add the offcuts you already own. Leave Qty blank for a size
+                    you can buy freely; the plan spends what you have first.
+                  </span>
+                </div>
                 <h3 style={{ marginTop: 16 }}>Bill of materials</h3>
                 <table>
                   <thead>
