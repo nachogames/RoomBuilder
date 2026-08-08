@@ -1,10 +1,15 @@
 import type { Project, Carcass, Runner, RefBox, Person, Pt } from "../domain/types";
 import { collisionWalls, rectInsideRoom } from "../domain/room";
-import { snapHeight, dependentsOf, shelfSurfaceId } from "../geometry/stacking";
+import {
+  baseboardFloorY,
+  snapHeight,
+  dependentsOf,
+  shelfSurfaceId,
+} from "../geometry/stacking";
 import { materialThickness } from "../geometry/types";
 import { resolveMove } from "./dragMath";
 import { findContainer, clampToInterior } from "../geometry/container";
-import { translateGroup } from "../geometry/group";
+import { rectAABB, translateGroup } from "../geometry/group";
 import { attemptToteMove } from "../geometry/totePush";
 import { personFootprint } from "../domain/person";
 
@@ -132,7 +137,14 @@ function dropCarcass(project: Project, id: string, t: DropTarget): DropResult {
   };
   const desiredY = t.y;
   const probe: Carcass = { ...next, baseHeight: desiredY ?? next.baseHeight };
-  const baseHeight = clampY(snapHeight(probe, proj1), desiredY);
+  // The baseboard top is a hard floor: a carcass lowered over the band (back
+  // panel included) rests on the board instead of sinking into it.
+  const rr = carcassRoomRect(next, proj1, next.position.x, next.position.z);
+  const minY = baseboardFloorY(
+    proj1,
+    rectAABB(rr.cx, rr.cz, rr.w, rr.d, next.rotationDeg),
+  );
+  const baseHeight = Math.max(minY, clampY(snapHeight(probe, proj1), desiredY));
   const proj2: Project = {
     ...proj1,
     carcasses: proj1.carcasses.map((k) =>
@@ -198,7 +210,11 @@ function dropRunner(project: Project, id: string, t: DropTarget): DropResult {
   const moved = proj1.runners.find((k) => k.id === id) as Runner;
   const desiredY = t.y;
   const probe: Runner = { ...moved, baseHeight: desiredY ?? moved.baseHeight };
-  const baseHeight = clampY(snapHeight(probe, proj1), desiredY);
+  const minY = baseboardFloorY(
+    proj1,
+    rectAABB(moved.position.x, moved.position.z, moved.length, moved.depth, moved.rotationDeg),
+  );
+  const baseHeight = Math.max(minY, clampY(snapHeight(probe, proj1), desiredY));
   const oldY = r.baseHeight ?? 0;
   const proj2: Project = {
     ...proj1,
@@ -251,7 +267,11 @@ function dropRefBox(project: Project, id: string, t: DropTarget): DropResult {
   const moved = proj1.refBoxes.find((k) => k.id === id) as RefBox;
   const desiredY = t.y;
   const probe: RefBox = { ...moved, baseHeight: desiredY ?? moved.baseHeight };
-  const baseHeight = clampY(snapHeight(probe, proj1), desiredY);
+  const minY = baseboardFloorY(
+    proj1,
+    rectAABB(moved.position.x, moved.position.z, bw, bd, moved.rotationDeg),
+  );
+  const baseHeight = Math.max(minY, clampY(snapHeight(probe, proj1), desiredY));
   const oldY = bx.baseHeight ?? 0;
   const proj2: Project = {
     ...proj1,

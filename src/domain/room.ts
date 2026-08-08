@@ -82,6 +82,34 @@ export function collisionWalls(room: Room, itemBaseY: number): Pt[] {
   return innerOffsetVertices(room.walls, bb.thickness);
 }
 
+/** Per-wall-edge bounding rects of the baseboard band (the strip between the
+ *  wall line and its inward offset). Used to treat the board's top face as a
+ *  resting surface. Empty when the room has no baseboard. Angled walls get
+ *  their strip's bounding box — a slight overestimate, consistent with the
+ *  AABB-based stacking checks elsewhere. */
+export function baseboardBandRects(
+  room: Room,
+): Array<{ minX: number; maxX: number; minZ: number; maxZ: number }> {
+  const bb = room.baseboard;
+  if (!bb || bb.thickness <= 0) return [];
+  const walls = room.walls;
+  const inner = innerOffsetVertices(walls, bb.thickness);
+  const n = walls.length;
+  const out: Array<{ minX: number; maxX: number; minZ: number; maxZ: number }> =
+    [];
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    const q = [walls[i], walls[j], inner[j], inner[i]];
+    out.push({
+      minX: Math.min(...q.map((p) => p.x)),
+      maxX: Math.max(...q.map((p) => p.x)),
+      minZ: Math.min(...q.map((p) => p.z)),
+      maxZ: Math.max(...q.map((p) => p.z)),
+    });
+  }
+  return out;
+}
+
 /** Closed-polygon edges as [from, to] pairs. */
 export function wallEdges(walls: Pt[]): Array<[Pt, Pt]> {
   return walls.map((p, i) => [p, walls[(i + 1) % walls.length]]);

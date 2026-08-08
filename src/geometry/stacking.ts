@@ -2,6 +2,7 @@ import type { Project } from "../domain/types";
 import { materialThickness } from "./types";
 import { rectAABB, type AABB } from "./group";
 import { personFootprint, personTopY } from "../domain/person";
+import { baseboardBandRects } from "../domain/room";
 
 type Placed = { id: string };
 
@@ -156,7 +157,26 @@ function gatherSurfaces(target: Placed, project: Project): Surface[] {
       ),
     });
   }
+  // The baseboard's top face is a resting surface too: an item hugging the
+  // wall above the board can sit on it.
+  const bb = project.room.baseboard;
+  if (bb) {
+    for (const foot of baseboardBandRects(project.room)) {
+      out.push({ top: bb.height, foot });
+    }
+  }
   return out;
+}
+
+/** Minimum Y for a footprint: the baseboard's top when the footprint overlaps
+ *  the band, else the floor. Stops a lowered item sinking into the board. */
+export function baseboardFloorY(project: Project, foot: AABB): number {
+  const bb = project.room.baseboard;
+  if (!bb) return 0;
+  for (const r of baseboardBandRects(project.room)) {
+    if (overlaps(foot, r)) return bb.height;
+  }
+  return 0;
 }
 
 /** The Y a target should drop to: the highest horizontal surface (cabinet/
