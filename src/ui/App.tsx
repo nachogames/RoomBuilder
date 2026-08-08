@@ -942,12 +942,26 @@ function Workspace({
                 value={selected.depth}
                 onChange={(v) => patchSelected({ depth: v })}
               />
-              <DimField
-                label="Toe kick"
-                value={selected.toeKickHeight}
-                allowZero
-                onChange={(v) => reflowShelves({ toeKickHeight: v })}
-              />
+              <label
+                className="field"
+                title="Off: the case sits flat on the floor (no kick rail in the cut list)"
+              >
+                <span>Toe kick</span>
+                <input
+                  type="checkbox"
+                  checked={selected.toeKickHeight > 0}
+                  onChange={(e) =>
+                    reflowShelves({ toeKickHeight: e.target.checked ? 3 : 0 })
+                  }
+                />
+              </label>
+              {selected.toeKickHeight > 0 && (
+                <DimField
+                  label="Kick height"
+                  value={selected.toeKickHeight}
+                  onChange={(v) => reflowShelves({ toeKickHeight: v })}
+                />
+              )}
               <PlacementFields
                 obj={selected}
                 onPatch={patchSelected}
