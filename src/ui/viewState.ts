@@ -14,6 +14,8 @@ export interface ViewState {
   dimOffsets?: Record<string, { x: number; z: number }>;
   /** which Plan dimensions are shown: room walls / furniture items */
   dims?: { walls: boolean; items: boolean };
+  /** persisted Measure-tool annotations (pairs of pick targets) */
+  measurements?: Array<{ id: string; a: unknown; b: unknown }>;
 }
 
 export function loadViewState(): ViewState {

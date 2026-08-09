@@ -19,6 +19,7 @@ import {
 import { useUnits } from "../ui/units";
 import { DIM_HINT, dimStep } from "../ui/fields";
 import { loadViewState, saveViewState } from "../ui/viewState";
+import { uid } from "../domain/defaults";
 import { personFootprint } from "../domain/person";
 
 type Drag =
@@ -104,6 +105,20 @@ export function PlanView({
   const [edit, setEdit] = useState<Edit | null>(null);
   const [ghost, setGhost] = useState<{ x: number; z: number } | null>(null);
   const [picks, setPicks] = useState<PickOwner[]>([]);
+  // Persistent Measure annotations. They re-resolve live geometry each
+  // render (a measurement, not a constraint) and survive reload. Deleting
+  // one removes only the annotation — never undoes a move it made.
+  interface Measurement {
+    id: string;
+    a: PickOwner;
+    b: PickOwner;
+  }
+  const [measurements, setMeasurements] = useState<Measurement[]>(
+    () => (loadViewState().measurements as Measurement[] | undefined) ?? [],
+  );
+  useEffect(() => {
+    saveViewState({ measurements });
+  }, [measurements]);
   // User-dragged dimension-label offsets, keyed by a stable label id
   // (item id + axis, or wall edge index). Persisted so labels stay put.
   const [dimOffsets, setDimOffsets] = useState<Record<string, Pt>>(
@@ -215,7 +230,13 @@ export function PlanView({
   }
 
   function addPick(pk: PickOwner) {
-    setPicks((prev) => (prev.length >= 2 ? [pk] : [...prev, pk]));
+    if (picks.length === 1) {
+      // second pick completes a measurement, which sticks around
+      setMeasurements((m) => [...m, { id: uid("meas"), a: picks[0], b: pk }]);
+      setPicks([]);
+    } else {
+      setPicks([pk]);
+    }
   }
 
   /** Pick the item edge nearest to the click point. */
@@ -244,13 +265,14 @@ export function PlanView({
     addPick({ type: "item-edge", item, id, edge: bestEdge });
   }
 
-  /** Set the picked distance: translate the SECOND pick's owner along the
-   *  measurement axis so the gap becomes `desired`. Furniture still respects
-   *  walls/baseboard (slide-resolve); wall points/edges move exactly. */
-  function applyMeasure(desired: number) {
-    const [A, B] = picks;
-    const sa = A && targetSeg(A);
-    const sb = B && targetSeg(B);
+  /** Set a measurement's distance: translate the SECOND pick's owner along
+   *  the measurement axis so the gap becomes `desired`. A one-shot soft
+   *  constraint — the annotation stays but nothing remains locked.
+   *  Furniture still respects walls/baseboard (slide-resolve); wall
+   *  points/edges move exactly. */
+  function applyMeasure(A: PickOwner, B: PickOwner, desired: number) {
+    const sa = targetSeg(A);
+    const sb = targetSeg(B);
     if (!sa || !sb) return;
     const m = measureBetween(sa, sb);
     const delta = desired - m.dist;
@@ -312,7 +334,6 @@ export function PlanView({
         refBoxes: pr.refBoxes.map((k) => (k.id === B.id ? { ...k, position: pos } : k)),
       }));
     }
-    setPicks([]);
   }
 
   /** A dimension text that can be dragged out of the way. Click = edit,
@@ -330,6 +351,8 @@ export function PlanView({
       textAnchor?: "start" | "middle" | "end";
       dominantBaseline?: "middle" | "auto";
       wall?: boolean;
+      /** accent (amber) label — used for Measure annotations */
+      accent?: boolean;
       /** the edge this dimension measures (endpoint to endpoint) */
       seg?: { a: Pt; b: Pt };
     },
@@ -387,6 +410,7 @@ export function PlanView({
           x={lx}
           y={lz}
           fontSize={fontPx}
+          fill={opts?.accent ? "#e0a458" : undefined}
           textAnchor={opts?.textAnchor}
           dominantBaseline={opts?.dominantBaseline}
           style={{ cursor: "move" }}
@@ -750,9 +774,11 @@ export function PlanView({
         {measure ? (
           <>
             <b>Measure:</b> click two things — wall edges, wall corners, or
-            furniture edges. Then <b>click the amber distance</b> and type the
-            gap you want (fractions and =math work; 0 = flush). The{" "}
-            <b>second</b> thing you clicked moves. Esc clears the picks.
+            furniture edges — and the measurement <b>stays on the plan</b>,
+            tracking live. <b>Click its amber number</b> to set the gap
+            (fractions and =math work; 0 = flush) — the <b>second</b> pick
+            moves, once. <b>×</b> removes the annotation without undoing
+            anything. Esc cancels a half-made pick.
           </>
         ) : (
           <>
@@ -1227,45 +1253,21 @@ export function PlanView({
           );
         })}
 
-        {/* measure tool: pick highlights + measurement line + set-distance label */}
-        {measure && (() => {
-          const resolved = picks
-            .map((pk) => targetSeg(pk))
-            .filter((s): s is Seg => !!s);
-          const isPt = (s: Seg) => s.a.x === s.b.x && s.a.z === s.b.z;
-          const marks = resolved.map((s, idx) =>
-            isPt(s) ? (
-              <circle
-                key={idx}
-                cx={s.a.x}
-                cy={s.a.z}
-                r={fontPx * 0.7}
-                fill="none"
-                stroke="#e0a458"
-                strokeWidth={S * 1.3}
-                pointerEvents="none"
-              />
-            ) : (
-              <line
-                key={idx}
-                x1={s.a.x}
-                y1={s.a.z}
-                x2={s.b.x}
-                y2={s.b.z}
-                stroke="#e0a458"
-                strokeWidth={S * 1.8}
-                strokeLinecap="round"
-                pointerEvents="none"
-              />
-            ),
-          );
-          if (resolved.length < 2) return <g>{marks}</g>;
-          const m = measureBetween(resolved[0], resolved[1]);
+        {/* persistent measurements: always visible, live distances. Click the
+            number to set the gap (second pick moves); x deletes the
+            annotation only. */}
+        {measurements.map((meas) => {
+          const sa = targetSeg(meas.a);
+          const sb = targetSeg(meas.b);
+          if (!sa || !sb) return null; // a target went away; keep quiet
+          const m = measureBetween(sa, sb);
           const mx = (m.pa.x + m.pb.x) / 2;
           const mz = (m.pa.z + m.pb.z) / 2;
+          const key = `meas:${meas.id}`;
+          const off = dimOffsets[key] ?? { x: 0, z: 0 };
+          const text = fmt(m.dist);
           return (
-            <g>
-              {marks}
+            <g key={meas.id}>
               <line
                 x1={m.pa.x}
                 y1={m.pa.z}
@@ -1276,28 +1278,77 @@ export function PlanView({
                 strokeDasharray={`${S * 2.5} ${S * 2}`}
                 pointerEvents="none"
               />
-              <text
-                className="dim edit"
-                x={mx}
-                y={mz - fontPx * 0.6}
-                fontSize={fontPx}
-                textAnchor="middle"
-                fill="#e0a458"
-                onClick={() =>
+              {[m.pa, m.pb].map((p2, i2) => (
+                <circle
+                  key={i2}
+                  cx={p2.x}
+                  cy={p2.z}
+                  r={S * 1.6}
+                  fill="#e0a458"
+                  pointerEvents="none"
+                />
+              ))}
+              {dimLabel(
+                key,
+                mx,
+                mz - fontPx * 0.6,
+                text,
+                (lx, lz) =>
                   openEdit(
-                    mx,
-                    mz,
+                    lx,
+                    lz,
                     Math.round(m.dist * 10000) / 10000,
-                    applyMeasure,
+                    (n) => applyMeasure(meas.a, meas.b, n),
                     true,
-                  )
-                }
+                  ),
+                { textAnchor: "middle", accent: true },
+              )}
+              <text
+                className="meas-x"
+                x={mx + off.x + fontPx * (text.length * 0.32 + 0.9)}
+                y={mz - fontPx * 0.6 + off.z}
+                fontSize={fontPx * 0.9}
+                onPointerDown={(e) => {
+                  e.stopPropagation();
+                  setMeasurements((ms) => ms.filter((x) => x.id !== meas.id));
+                }}
               >
-                {fmt(m.dist)}
+                ×
               </text>
             </g>
           );
-        })()}
+        })}
+
+        {/* measure tool: first-pick highlight while choosing the second */}
+        {measure && picks.map((pk, idx) => {
+          const s = targetSeg(pk);
+          if (!s) return null;
+          const isPt = s.a.x === s.b.x && s.a.z === s.b.z;
+          return isPt ? (
+            <circle
+              key={idx}
+              cx={s.a.x}
+              cy={s.a.z}
+              r={fontPx * 0.7}
+              fill="none"
+              stroke="#e0a458"
+              strokeWidth={S * 1.3}
+              pointerEvents="none"
+            />
+          ) : (
+            <line
+              key={idx}
+              x1={s.a.x}
+              y1={s.a.z}
+              x2={s.b.x}
+              y2={s.b.z}
+              stroke="#e0a458"
+              strokeWidth={S * 1.8}
+              strokeLinecap="round"
+              pointerEvents="none"
+            />
+          );
+        })}
 
         {/* ghost breakpoint preview where a click would drop a corner */}
         {ghost && !drag && (

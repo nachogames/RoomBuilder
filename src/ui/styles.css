@@ -636,6 +636,18 @@ td {
   margin: 0;
 }
 
+/* delete glyph on a persistent measurement */
+.meas-x {
+  fill: var(--text-faint);
+  cursor: pointer;
+  paint-order: stroke;
+  stroke: var(--bg-canvas);
+  stroke-width: 0.5px;
+}
+.meas-x:hover {
+  fill: var(--danger);
+}
+
 /* ---------- viewport overlay chips (e.g. Dollhouse toggle) ---------- */
 .viewport-chip {
   position: absolute;
