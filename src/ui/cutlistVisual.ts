@@ -18,6 +18,70 @@ import type { BoardBin } from "../cutlist/board";
 export type RenderMode = "print" | "screen";
 type Fmt = (n: number) => string;
 
+/** Per-item identity on the cut diagrams: a letter tag + a fill color so
+ *  every piece shows which scene item (bookcase/runner) it belongs to. */
+export interface ItemKey {
+  id: string;
+  label: string;
+  tag: string; // A, B, C…
+  color: string; // light print-friendly fill
+}
+
+const ITEM_COLORS = [
+  "#e6d8b5",
+  "#c9dcc6",
+  "#c6d4e2",
+  "#e2cec6",
+  "#dccae0",
+  "#e0dfc0",
+  "#c4e0dc",
+  "#e0c6d6",
+];
+
+/** Assign a tag + color to every distinct item appearing in the cut list,
+ *  in first-seen order. `names` maps item id → its scene label. */
+export function buildItemKeys(
+  cutList: CutList,
+  names: Record<string, string>,
+): ItemKey[] {
+  const ids: string[] = [];
+  const seen = new Set<string>();
+  const add = (id: string) => {
+    if (!seen.has(id)) {
+      seen.add(id);
+      ids.push(id);
+    }
+  };
+  for (const m of cutList.byMaterial) {
+    for (const b of m.sheetBins) for (const pl of b.placements) add(pl.carcassId);
+    for (const b of m.boardBins) for (const c of b.cuts) add(c.carcassId);
+    for (const p of m.oversize) add(p.carcassId);
+    for (const p of m.unplaced) add(p.carcassId);
+  }
+  return ids.map((id, i) => ({
+    id,
+    label: names[id] ?? "unknown item",
+    tag: String.fromCharCode(65 + (i % 26)),
+    color: ITEM_COLORS[i % ITEM_COLORS.length],
+  }));
+}
+
+/** Legend chips mapping each tag/color to its item name. */
+export function renderItemLegend(keys: ItemKey[]): string {
+  if (keys.length === 0) return "";
+  const chips = keys
+    .map(
+      (k) => `<span class="cv-chip"><span class="cv-chip-swatch" style="background:${k.color}"></span>${escapeHtml(k.tag)} — ${escapeHtml(k.label)}</span>`,
+    )
+    .join("");
+  return `<div class="cv-legend">${chips}</div>`;
+}
+
+const keyOf = (
+  keys: ItemKey[] | undefined,
+  id: string,
+): ItemKey | undefined => keys?.find((k) => k.id === id);
+
 const PAGE_W = 7.5; // letter portrait drawing width (in) at 0.5" margin
 const SVG_H = 9;    // sheet SVG region height (in) reserving 1" for heading
 
@@ -68,30 +132,36 @@ export function renderMaterialSection(
   m: MaterialCutList,
   fmt: Fmt,
   mode: RenderMode,
+  keys?: ItemKey[],
 ): string {
   if (m.kind === "sheet") {
     if (m.sheetBins.length === 0) return "";
     return m.sheetBins
       .map((b, i) =>
-        renderSheetPage(m.materialName, i + 1, m.sheetBins.length, b, fmt, mode),
+        renderSheetPage(m.materialName, i + 1, m.sheetBins.length, b, fmt, mode, keys),
       )
       .join("");
   }
   if (m.boardBins.length === 0) return "";
-  return renderBoardSection(m, fmt, mode);
+  return renderBoardSection(m, fmt, mode, keys);
 }
 
-export function renderDetailTable(cutList: CutList, fmt: Fmt): string {
-  interface Row { label: string; length: number; width: number; qty: number }
+export function renderDetailTable(
+  cutList: CutList,
+  fmt: Fmt,
+  keys?: ItemKey[],
+): string {
+  interface Row { itemId: string; label: string; length: number; width: number; qty: number }
   const sections = cutList.byMaterial.map((m) => {
     const acc = new Map<string, Row>();
     if (m.kind === "sheet") {
       for (const b of m.sheetBins) {
         for (const pl of b.placements) {
-          const key = `${pl.label}|${pl.w}|${pl.h}`;
+          const key = `${pl.carcassId}|${pl.label}|${pl.w}|${pl.h}`;
           const existing = acc.get(key);
           if (existing) existing.qty++;
           else acc.set(key, {
+            itemId: pl.carcassId,
             label: pl.label,
             length: Math.max(pl.w, pl.h),
             width: Math.min(pl.w, pl.h),
@@ -102,15 +172,21 @@ export function renderDetailTable(cutList: CutList, fmt: Fmt): string {
     } else {
       for (const b of m.boardBins) {
         for (const c of b.cuts) {
-          const key = `${c.label}|${c.length}`;
+          const key = `${c.carcassId}|${c.label}|${c.length}`;
           const existing = acc.get(key);
           if (existing) existing.qty++;
-          else acc.set(key, { label: c.label, length: c.length, width: 0, qty: 1 });
+          else acc.set(key, { itemId: c.carcassId, label: c.label, length: c.length, width: 0, qty: 1 });
         }
       }
     }
     const list = [...acc.values()].sort((a, b) => b.length - a.length);
+    const itemCell = (id: string) => {
+      const k = keyOf(keys, id);
+      if (!k) return "—";
+      return `<span class="cv-chip"><span class="cv-chip-swatch" style="background:${k.color}"></span>${escapeHtml(k.tag)} — ${escapeHtml(k.label)}</span>`;
+    };
     const tbody = list.map((r) => `<tr>
+      <td>${itemCell(r.itemId)}</td>
       <td>${escapeHtml(r.label)}</td>
       <td>${escapeHtml(fmt(r.length))}</td>
       <td>${r.width > 0 ? escapeHtml(fmt(r.width)) : "—"}</td>
@@ -126,7 +202,7 @@ export function renderDetailTable(cutList: CutList, fmt: Fmt): string {
       ${oversize}
       ${short}
       <table class="cv-table">
-        <thead><tr><th>Part</th><th>Length</th><th>Width</th><th>Qty</th></tr></thead>
+        <thead><tr><th>Item</th><th>Part</th><th>Length</th><th>Width</th><th>Qty</th></tr></thead>
         <tbody>${tbody}</tbody>
       </table>`;
   }).join("");
@@ -140,8 +216,9 @@ export function renderSheetBin(
   bin: SheetBin,
   fmt: Fmt,
   mode: RenderMode,
+  keys?: ItemKey[],
 ): string {
-  return renderSheetPage(matName, num, total, bin, fmt, mode);
+  return renderSheetPage(matName, num, total, bin, fmt, mode, keys);
 }
 
 /** Just the title row for a sheet — for use outside the zoom/pan SVG. */
@@ -162,26 +239,12 @@ export function renderSheetSvg(
   bin: SheetBin,
   fmt: Fmt,
   mode: RenderMode,
+  keys?: ItemKey[],
 ): string {
   const scale = Math.min(PAGE_W / bin.sheetWidth, SVG_H / bin.sheetLength);
   const svgW = bin.sheetWidth * scale;
   const svgH = bin.sheetLength * scale;
-  const pieces = bin.placements.map((pl) => {
-    const x = pl.x * scale;
-    const y = pl.y * scale;
-    const w = pl.w * scale;
-    const h = pl.h * scale;
-    const cx = x + w / 2;
-    const cy = y + h / 2;
-    const lineH = Math.min(0.18, h * 0.3);
-    const fontSize = Math.max(0.08, Math.min(0.16, Math.min(w, h) * 0.22));
-    const dims = `${fmt(pl.w)} × ${fmt(pl.h)}${pl.rotated ? " ↻" : ""}`;
-    return `<g>
-      <rect class="cv-piece" x="${x}" y="${y}" width="${w}" height="${h}" />
-      <text class="cv-piece-label" x="${cx}" y="${cy - lineH / 2}" font-size="${fontSize}">${escapeHtml(pl.label)}</text>
-      <text class="cv-piece-label" x="${cx}" y="${cy + lineH / 2}" font-size="${fontSize}">${escapeHtml(dims)}</text>
-    </g>`;
-  }).join("");
+  const pieces = bin.placements.map((pl) => sheetPieceSvg(pl, scale, fmt, keys)).join("");
   const sizeAttrs = mode === "print"
     ? `width="${svgW}in" height="${svgH}in"`
     : `width="100%" preserveAspectRatio="xMidYMid meet"`;
@@ -191,13 +254,45 @@ export function renderSheetSvg(
     </svg>`;
 }
 
+/** One placed piece: rect tinted by its item's color, a corner tag letter,
+ *  and the usual label + dims lines. */
+function sheetPieceSvg(
+  pl: SheetBin["placements"][number],
+  scale: number,
+  fmt: Fmt,
+  keys?: ItemKey[],
+): string {
+  const x = pl.x * scale;
+  const y = pl.y * scale;
+  const w = pl.w * scale;
+  const h = pl.h * scale;
+  const cx = x + w / 2;
+  const cy = y + h / 2;
+  const lineH = Math.min(0.18, h * 0.3);
+  const fontSize = Math.max(0.08, Math.min(0.16, Math.min(w, h) * 0.22));
+  const dims = `${fmt(pl.w)} × ${fmt(pl.h)}${pl.rotated ? " ↻" : ""}`;
+  const k = keyOf(keys, pl.carcassId);
+  const fill = k ? ` style="fill:${k.color}"` : "";
+  const tagSize = Math.max(0.08, Math.min(0.14, Math.min(w, h) * 0.2));
+  const tag = k
+    ? `<text class="cv-piece-tag" x="${x + tagSize * 0.5}" y="${y + tagSize * 1.1}" font-size="${tagSize}">${escapeHtml(k.tag)}</text>`
+    : "";
+  return `<g>
+      <rect class="cv-piece" x="${x}" y="${y}" width="${w}" height="${h}"${fill} />
+      ${tag}
+      <text class="cv-piece-label" x="${cx}" y="${cy - lineH / 2}" font-size="${fontSize}">${escapeHtml(pl.label)}</text>
+      <text class="cv-piece-label" x="${cx}" y="${cy + lineH / 2}" font-size="${fontSize}">${escapeHtml(dims)}</text>
+    </g>`;
+}
+
 export function renderBoardMaterial(
   m: MaterialCutList,
   fmt: Fmt,
   mode: RenderMode,
+  keys?: ItemKey[],
 ): string {
   if (m.kind !== "board" || m.boardBins.length === 0) return "";
-  return renderBoardSection(m, fmt, mode);
+  return renderBoardSection(m, fmt, mode, keys);
 }
 
 function renderSheetPage(
@@ -207,6 +302,7 @@ function renderSheetPage(
   bin: SheetBin,
   fmt: Fmt,
   mode: RenderMode,
+  keys?: ItemKey[],
 ): string {
   const scale = Math.min(PAGE_W / bin.sheetWidth, SVG_H / bin.sheetLength);
   const svgW = bin.sheetWidth * scale;
@@ -219,22 +315,9 @@ function renderSheetPage(
   // CSS units like `0.13in` here gets resolved against the viewport (96px/in)
   // rather than the viewBox scale, which catastrophically mis-sizes labels
   // when the SVG is stretched to 100% column width.
-  const pieces = bin.placements.map((pl) => {
-    const x = pl.x * scale;
-    const y = pl.y * scale;
-    const w = pl.w * scale;
-    const h = pl.h * scale;
-    const cx = x + w / 2;
-    const cy = y + h / 2;
-    const lineH = Math.min(0.18, h * 0.3);
-    const fontSize = Math.max(0.08, Math.min(0.16, Math.min(w, h) * 0.22));
-    const dims = `${fmt(pl.w)} × ${fmt(pl.h)}${pl.rotated ? " ↻" : ""}`;
-    return `<g>
-      <rect class="cv-piece" x="${x}" y="${y}" width="${w}" height="${h}" />
-      <text class="cv-piece-label" x="${cx}" y="${cy - lineH / 2}" font-size="${fontSize}">${escapeHtml(pl.label)}</text>
-      <text class="cv-piece-label" x="${cx}" y="${cy + lineH / 2}" font-size="${fontSize}">${escapeHtml(dims)}</text>
-    </g>`;
-  }).join("");
+  const pieces = bin.placements
+    .map((pl) => sheetPieceSvg(pl, scale, fmt, keys))
+    .join("");
   const sizeAttrs = mode === "print"
     ? `width="${svgW}in" height="${svgH}in"`
     : `width="100%" preserveAspectRatio="xMidYMid meet" style="max-height:520px;max-width:100%"`;
@@ -253,9 +336,10 @@ function renderBoardSection(
   m: MaterialCutList,
   fmt: Fmt,
   mode: RenderMode,
+  keys?: ItemKey[],
 ): string {
   const strips = m.boardBins
-    .map((b, i) => renderBoardStrip(b, i + 1, fmt))
+    .map((b, i) => renderBoardStrip(b, i + 1, fmt, keys))
     .join("");
   const wrapClass = mode === "print" ? "cv-page" : "cv-block";
   return `<section class="${wrapClass}">
@@ -265,11 +349,19 @@ function renderBoardSection(
   </section>`;
 }
 
-function renderBoardStrip(bin: BoardBin, num: number, fmt: Fmt): string {
+function renderBoardStrip(
+  bin: BoardBin,
+  num: number,
+  fmt: Fmt,
+  keys?: ItemKey[],
+): string {
   let xPct = 0;
   const segs = bin.cuts.map((c) => {
     const widthPct = (c.length / bin.stockLength) * 100;
-    const seg = `<div class="cv-board-seg" style="left:${xPct.toFixed(3)}%;width:${widthPct.toFixed(3)}%;">${escapeHtml(c.label)} — ${escapeHtml(fmt(c.length))}</div>`;
+    const k = keyOf(keys, c.carcassId);
+    const tint = k ? `background:${k.color};` : "";
+    const tag = k ? `<b>${escapeHtml(k.tag)}</b>&nbsp;· ` : "";
+    const seg = `<div class="cv-board-seg" style="left:${xPct.toFixed(3)}%;width:${widthPct.toFixed(3)}%;${tint}">${tag}${escapeHtml(c.label)} — ${escapeHtml(fmt(c.length))}</div>`;
     xPct += widthPct;
     return seg;
   }).join("");
@@ -326,6 +418,10 @@ export const CUTLIST_VISUAL_CSS = `
 .cv-sheet { fill: #fff; stroke: #555; stroke-width: 0.01; }
 .cv-piece { fill: #e6d8b5; stroke: #6b5a30; stroke-width: 0.01; }
 .cv-piece-label { font-family: -apple-system, BlinkMacSystemFont, Helvetica, Arial, sans-serif; text-anchor: middle; dominant-baseline: middle; fill: #222; }
+.cv-piece-tag { font-family: -apple-system, BlinkMacSystemFont, Helvetica, Arial, sans-serif; font-weight: 700; fill: #55431c; }
+.cv-legend { display: flex; flex-wrap: wrap; gap: 6pt 12pt; margin: 4pt 0 8pt; }
+.cv-chip { display: inline-flex; align-items: center; gap: 4pt; font-size: 10pt; color: inherit; white-space: nowrap; }
+.cv-chip-swatch { display: inline-block; width: 10pt; height: 10pt; border: 1px solid #6b5a30; border-radius: 2pt; }
 .cv-sheet-block, .cv-block, .cv-detail, .cv-summary { background: #f4f1ea; padding: 12px; border-radius: 6px; margin-bottom: 12px; color: #222; }
 .cv-sheet-block .cv-h3, .cv-block .cv-h3, .cv-detail .cv-h3, .cv-summary .cv-h3 { color: #222; margin-top: 0; }
 .cv-sheet-block .cv-sub, .cv-block .cv-sub, .cv-detail .cv-sub, .cv-summary .cv-sub { color: #555; }

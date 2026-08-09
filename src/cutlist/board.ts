@@ -3,6 +3,8 @@ import type { Part } from "../geometry/types";
 
 export interface BoardCut {
   partId: string;
+  /** the scene item (bookcase/runner) this part belongs to */
+  carcassId: string;
   label: string;
   length: Inches;
 }
@@ -36,7 +38,7 @@ export function packBoards(
       const need = (bin.cuts.length ? kerf : 0) + p.length;
       if (bin.used + need <= stockLength + 1e-9) {
         bin.used += need;
-        bin.cuts.push({ partId: p.id, label: p.label, length: p.length });
+        bin.cuts.push({ partId: p.id, carcassId: p.carcassId, label: p.label, length: p.length });
         placed = true;
         break;
       }
@@ -45,7 +47,7 @@ export function packBoards(
       bins.push({
         nominal,
         stockLength,
-        cuts: [{ partId: p.id, label: p.label, length: p.length }],
+        cuts: [{ partId: p.id, carcassId: p.carcassId, label: p.label, length: p.length }],
         used: p.length,
         leftover: 0,
       });

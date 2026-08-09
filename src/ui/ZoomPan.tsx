@@ -6,7 +6,7 @@ interface ViewTransform {
   ty: number;
 }
 
-const MIN_SCALE = 0.25;
+const MIN_SCALE = 0.1;
 const MAX_SCALE = 20;
 
 /**
@@ -15,7 +15,7 @@ const MAX_SCALE = 20;
  *  - left-button drag: pan
  *  - Fit button / double click: back to the fit view
  *
- * Opens at `fitScale` (75%) with the wrapper sized to the content's full
+ * Opens at `fitScale` (25%) with the wrapper sized to the content's full
  * scaled height, so an entire sheet is visible top to bottom. Content is
  * injected via dangerouslySetInnerHTML so we can wrap the same HTML-string
  * diagrams the print window uses.
@@ -23,7 +23,7 @@ const MAX_SCALE = 20;
 export function ZoomPan({
   html,
   minHeight = 240,
-  fitScale = 0.75,
+  fitScale = 0.25,
 }: {
   html: string;
   minHeight?: number;

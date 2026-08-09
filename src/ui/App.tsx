@@ -47,8 +47,10 @@ import {
 import { openCutlistPrintWindow } from "./printWindow";
 import {
   CUTLIST_VISUAL_CSS,
+  buildItemKeys,
   renderBoardMaterial,
   renderDetailTable as renderCutlistDetailTable,
+  renderItemLegend,
   renderSheetSvg,
   renderSummarySection as renderCutlistSummary,
   sheetHeading,
@@ -383,6 +385,16 @@ function Workspace({
     const all = groupPocketsByPart(derived.pocketPlan, derived.joints, derived.parts);
     return all.filter((g) => selectionIds.has(g.carcassId));
   }, [derived.pocketPlan, derived.joints, derived.parts, selectionIds]);
+
+  // Tag + color per scene item so every piece on the cut diagrams shows
+  // which bookcase/runner it belongs to.
+  const itemKeys = useMemo(() => {
+    if (!selectedCutList) return [];
+    const names: Record<string, string> = {};
+    for (const c of project.carcasses) names[c.id] = c.label;
+    for (const r of project.runners) names[r.id] = r.label;
+    return buildItemKeys(selectedCutList, names);
+  }, [selectedCutList, project.carcasses, project.runners]);
 
   const selectedItemLabels = useMemo(() => {
     const labels: string[] = [];
@@ -1637,6 +1649,7 @@ function Workspace({
                             projectName: project.name,
                             cutList: selectedCutList,
                             itemLabels: selectedItemLabels,
+                            itemKeys,
                             unitsLabel: project.units,
                             pocketGroups: selectedPocketGroups,
                           })
@@ -1647,11 +1660,12 @@ function Workspace({
                     </div>
                     <div
                       dangerouslySetInnerHTML={{
-                        __html: renderCutlistSummary(
-                          [],
-                          selectedCutList,
-                          (n) => formatLength(n, project.units),
-                        ),
+                        __html:
+                          renderCutlistSummary(
+                            [],
+                            selectedCutList,
+                            (n) => formatLength(n, project.units),
+                          ) + renderItemLegend(itemKeys),
                       }}
                     />
                     {selectedCutList.byMaterial.map((m) => {
@@ -1663,11 +1677,11 @@ function Workspace({
                               {sheetHeading(m.materialName, i + 1, m.sheetBins.length)}
                             </h3>
                             <div className="cv-sub">{sheetSubtitle(b, f)}</div>
-                            <ZoomPan html={renderSheetSvg(b, f, "screen")} />
+                            <ZoomPan html={renderSheetSvg(b, f, "screen", itemKeys)} />
                           </div>
                         ));
                       }
-                      const html = renderBoardMaterial(m, f, "screen");
+                      const html = renderBoardMaterial(m, f, "screen", itemKeys);
                       if (!html) return null;
                       return <ZoomPan key={m.materialId} html={html} />;
                     })}
@@ -1676,6 +1690,7 @@ function Workspace({
                         __html: renderCutlistDetailTable(
                           selectedCutList,
                           (n) => formatLength(n, project.units),
+                          itemKeys,
                         ),
                       }}
                     />

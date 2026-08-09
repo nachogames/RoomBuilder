@@ -5,8 +5,10 @@ import {
   CUTLIST_VISUAL_CSS,
   escapeHtml,
   renderDetailTable,
+  renderItemLegend,
   renderMaterialSection,
   renderSummarySection,
+  type ItemKey,
 } from "./cutlistVisual";
 import type { PartPocketGroup } from "../pockets/byPart";
 import {
@@ -20,6 +22,8 @@ interface OpenArgs {
   projectName: string;
   cutList: CutList;
   itemLabels: string[];
+  /** tag+color per scene item so pieces on the diagrams stay identifiable */
+  itemKeys?: ItemKey[];
   unitsLabel: Units;
   pocketGroups?: PartPocketGroup[];
 }
@@ -41,7 +45,7 @@ export function openCutlistPrintWindow(args: OpenArgs): void {
 }
 
 function renderCutlistHtml(args: OpenArgs): string {
-  const { projectName, cutList, itemLabels, unitsLabel, pocketGroups } = args;
+  const { projectName, cutList, itemLabels, itemKeys, unitsLabel, pocketGroups } = args;
   const today = new Date().toISOString().slice(0, 10);
   const fmt = (n: number) => formatLength(n, unitsLabel);
 
@@ -50,11 +54,12 @@ function renderCutlistHtml(args: OpenArgs): string {
     <h1>Cutlist — ${escapeHtml(projectName)}</h1>
     <div class="cv-sub">${escapeHtml(today)}</div>
     ${renderSummarySection(itemLabels, cutList, fmt)}
+    ${renderItemLegend(itemKeys ?? [])}
   </section>`;
   const layouts = cutList.byMaterial
-    .map((m) => renderMaterialSection(m, fmt, "print"))
+    .map((m) => renderMaterialSection(m, fmt, "print", itemKeys))
     .join("");
-  const table = `<section class="cv-page">${renderDetailTable(cutList, fmt)}</section>`;
+  const table = `<section class="cv-page">${renderDetailTable(cutList, fmt, itemKeys)}</section>`;
 
   const pocketPages = pocketGroups && pocketGroups.length > 0
     ? `<section class="cv-page"><h2>Pocket holes</h2>${pocketGroups

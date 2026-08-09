@@ -3,6 +3,8 @@ import type { Part } from "../geometry/types";
 
 export interface SheetPlacement {
   partId: string;
+  /** the scene item (bookcase/runner) this part belongs to */
+  carcassId: string;
   label: string;
   x: Inches;
   y: Inches;
@@ -436,6 +438,7 @@ function commit(bin: PackBin, piece: Piece, choice: Choice, kerf: number): void 
 
   bin.placements.push({
     partId: piece.p.id,
+    carcassId: piece.p.carcassId,
     label: piece.p.label,
     x,
     y,
