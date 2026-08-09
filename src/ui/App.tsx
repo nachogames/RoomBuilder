@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   Carcass,
+  CarcassConstruction,
   Project,
   Runner,
   ShelfAttachment,
@@ -1044,6 +1045,23 @@ function Workspace({
                 options={CARCASS_JOIN}
                 onChange={(v) => patchSelected({ carcassJoinery: v })}
               />
+              <label
+                className="field"
+                title="tall-sides: sides run full height, top/bottom fit between them. capped: top & bottom run the full width and the sides sit inside them."
+              >
+                <span>Construction</span>
+                <select
+                  value={selected.construction ?? "tall-sides"}
+                  onChange={(e) =>
+                    patchSelected({
+                      construction: e.target.value as CarcassConstruction,
+                    })
+                  }
+                >
+                  <option value="tall-sides">tall sides</option>
+                  <option value="capped">capped top/bottom</option>
+                </select>
+              </label>
               <label className="field">
                 <span>Has back</span>
                 <input

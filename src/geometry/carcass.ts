@@ -28,6 +28,12 @@ export function buildCarcass(
   // carcass interior depth. Shelves use the full depth D.
   const innerW = W - 2 * t;
   const shelfDepth = D;
+  // "capped": top/bottom overlap the sides (full W); the sides stand on the
+  // bottom panel and stop under the top. Default: sides run full height.
+  const capped = c.construction === "capped";
+  const sideH = capped ? H - toe - 2 * t : H;
+  const sideY = capped ? toe + t + sideH / 2 : H / 2;
+  const capW = capped ? W : innerW;
 
   const parts: Part[] = [];
   const joints: Joint[] = [];
@@ -50,9 +56,9 @@ export function buildCarcass(
         materialId: c.carcassMaterialId,
         thickness: t,
         grainMatters: true,
-        box: { x: t, y: H, z: D },
-        center: { x: sign * (W / 2 - t / 2), y: H / 2, z: 0 },
-        major: H,
+        box: { x: t, y: sideH, z: D },
+        center: { x: sign * (W / 2 - t / 2), y: sideY, z: 0 },
+        major: sideH,
         minor: D,
       }),
     );
@@ -69,9 +75,9 @@ export function buildCarcass(
       materialId: c.carcassMaterialId,
       thickness: t,
       grainMatters: true,
-      box: { x: innerW, y: t, z: D },
+      box: { x: capW, y: t, z: D },
       center: { x: 0, y: H - t / 2, z: 0 },
-      major: innerW,
+      major: capW,
       minor: D,
     }),
   );
@@ -85,9 +91,9 @@ export function buildCarcass(
       materialId: c.carcassMaterialId,
       thickness: t,
       grainMatters: true,
-      box: { x: innerW, y: t, z: D },
+      box: { x: capW, y: t, z: D },
       center: { x: 0, y: toe + t / 2, z: 0 },
-      major: innerW,
+      major: capW,
       minor: D,
     }),
   );
@@ -95,6 +101,8 @@ export function buildCarcass(
   for (const [sideIdx, side] of sideIds.entries()) {
     const sideLabel = sideIdx === 0 ? "left" : "right";
     const edge = sideIdx === 0 ? "left" : "right";
+    // tall-sides: pockets go in the top/bottom panels' side edges.
+    // capped: the panels overlap the sides, so pockets go in the side ends.
     joints.push({
       id: jid(),
       carcassId: c.id,
@@ -104,8 +112,8 @@ export function buildCarcass(
         { partId: topId, role: "top" },
         { partId: side, role: "side" },
       ],
-      drilledPartId: topId,
-      drilledEdge: edge,
+      drilledPartId: capped ? side : topId,
+      drilledEdge: capped ? "top-edge" : edge,
       edgeLength: D,
     });
     joints.push({
@@ -117,8 +125,8 @@ export function buildCarcass(
         { partId: bottomId, role: "bottom" },
         { partId: side, role: "side" },
       ],
-      drilledPartId: bottomId,
-      drilledEdge: edge,
+      drilledPartId: capped ? side : bottomId,
+      drilledEdge: capped ? "bottom-edge" : edge,
       edgeLength: D,
     });
   }
@@ -135,26 +143,43 @@ export function buildCarcass(
         materialId: c.carcassMaterialId,
         thickness: t,
         grainMatters: true,
-        box: { x: innerW, y: toe, z: t },
+        box: { x: capW, y: toe, z: t },
         center: { x: 0, y: toe / 2, z: D / 2 - t / 2 },
-        major: innerW,
+        major: capW,
         minor: toe,
       }),
     );
-    for (const [sideIdx, side] of sideIds.entries()) {
+    if (capped) {
+      // The sides stop at the bottom panel, so the rail fastens up into it.
       joints.push({
         id: jid(),
         carcassId: c.id,
         method: c.carcassJoinery,
-        label: "Toe kick to side",
+        label: "Toe kick to bottom",
         members: [
           { partId: kickId, role: "toe-kick" },
-          { partId: side, role: "side" },
+          { partId: bottomId, role: "bottom" },
         ],
         drilledPartId: kickId,
-        drilledEdge: sideIdx === 0 ? "left" : "right",
-        edgeLength: toe,
+        drilledEdge: "top-edge",
+        edgeLength: capW,
       });
+    } else {
+      for (const [sideIdx, side] of sideIds.entries()) {
+        joints.push({
+          id: jid(),
+          carcassId: c.id,
+          method: c.carcassJoinery,
+          label: "Toe kick to side",
+          members: [
+            { partId: kickId, role: "toe-kick" },
+            { partId: side, role: "side" },
+          ],
+          drilledPartId: kickId,
+          drilledEdge: sideIdx === 0 ? "left" : "right",
+          edgeLength: toe,
+        });
+      }
     }
   }
 

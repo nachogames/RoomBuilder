@@ -104,10 +104,19 @@ export interface ShelfSpec {
   attachment: ShelfAttachment;
 }
 
+/** How the box corners go together.
+ *  - "tall-sides" (default): sides run the full height; top/bottom fit
+ *    between them.
+ *  - "capped": top and bottom run the full outside width; the sides sit
+ *    inside, standing on the bottom with the top resting on them. */
+export type CarcassConstruction = "tall-sides" | "capped";
+
 /** The shared primitive: a box with shelves. Bookcases/cabinets/desk cabinets. */
 export interface Carcass {
   id: string;
   label: string;
+  /** corner construction; omitted = "tall-sides" */
+  construction?: CarcassConstruction;
   /** outside dimensions */
   width: Inches;
   height: Inches;
