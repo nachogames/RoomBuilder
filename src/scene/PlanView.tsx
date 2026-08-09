@@ -316,7 +316,10 @@ export function PlanView({
   }
 
   /** A dimension text that can be dragged out of the way. Click = edit,
-   *  drag = move (leader line back to its anchor), double-click = reset. */
+   *  drag = move, double-click = reset. When dragged, the label carries a
+   *  drafting-style bracket: witness lines from the two points it measures
+   *  (`seg`) to a ticked dimension line beside the label, so it's always
+   *  clear which span the number refers to. */
   function dimLabel(
     key: string,
     ax: number,
@@ -327,15 +330,51 @@ export function PlanView({
       textAnchor?: "start" | "middle" | "end";
       dominantBaseline?: "middle" | "auto";
       wall?: boolean;
+      /** the edge this dimension measures (endpoint to endpoint) */
+      seg?: { a: Pt; b: Pt };
     },
   ) {
     const off = dimOffsets[key] ?? { x: 0, z: 0 };
     const lx = ax + off.x;
     const lz = az + off.z;
     const moved = off.x !== 0 || off.z !== 0;
+    const seg = opts?.seg;
+    let bracket: React.ReactNode = null;
+    if (moved && seg) {
+      // Project the label's pull-away onto the edge normal: the dimension
+      // line sits parallel to the edge at that offset, witness lines tie it
+      // back to the measured endpoints.
+      const ex = seg.b.x - seg.a.x;
+      const ez = seg.b.z - seg.a.z;
+      const len = Math.hypot(ex, ez) || 1;
+      const nx = -ez / len;
+      const nz = ex / len;
+      const midx = (seg.a.x + seg.b.x) / 2;
+      const midz = (seg.a.z + seg.b.z) / 2;
+      const d = (lx - midx) * nx + (lz - midz) * nz;
+      const ax2 = seg.a.x + nx * d;
+      const az2 = seg.a.z + nz * d;
+      const bx2 = seg.b.x + nx * d;
+      const bz2 = seg.b.z + nz * d;
+      const over = Math.sign(d || 1) * S * 2; // witness overshoot past the line
+      const tick = fontPx * 0.35; // 45° drafting ticks at the ends
+      const tx = (ex / len - nx) * tick;
+      const tz = (ez / len - nz) * tick;
+      const grey = { stroke: "#9a9aa6", strokeOpacity: 0.65, strokeWidth: S * 0.5 };
+      bracket = (
+        <g pointerEvents="none">
+          <line x1={seg.a.x} y1={seg.a.z} x2={ax2 + nx * over} y2={az2 + nz * over} {...grey} strokeDasharray={`${S * 1.5} ${S}`} />
+          <line x1={seg.b.x} y1={seg.b.z} x2={bx2 + nx * over} y2={bz2 + nz * over} {...grey} strokeDasharray={`${S * 1.5} ${S}`} />
+          <line x1={ax2} y1={az2} x2={bx2} y2={bz2} {...grey} />
+          <line x1={ax2 - tx} y1={az2 - tz} x2={ax2 + tx} y2={az2 + tz} {...grey} strokeWidth={S * 0.8} />
+          <line x1={bx2 - tx} y1={bz2 - tz} x2={bx2 + tx} y2={bz2 + tz} {...grey} strokeWidth={S * 0.8} />
+        </g>
+      );
+    }
     return (
       <g key={key}>
-        {moved && (
+        {bracket}
+        {moved && !seg && (
           <line
             x1={ax}
             y1={az}
@@ -844,7 +883,13 @@ export function PlanView({
                         ),
                       })),
                     ),
-                  { textAnchor: "middle" },
+                  {
+                    textAnchor: "middle",
+                    seg: {
+                      a: { x: r.position.x - r.length / 2, z: r.position.z - r.depth / 2 },
+                      b: { x: r.position.x + r.length / 2, z: r.position.z - r.depth / 2 },
+                    },
+                  },
                 )}
                 {dimLabel(
                   `${r.id}:D`,
@@ -860,7 +905,13 @@ export function PlanView({
                         ),
                       })),
                     ),
-                  { dominantBaseline: "middle" },
+                  {
+                    dominantBaseline: "middle",
+                    seg: {
+                      a: { x: r.position.x + r.length / 2, z: r.position.z - r.depth / 2 },
+                      b: { x: r.position.x + r.length / 2, z: r.position.z + r.depth / 2 },
+                    },
+                  },
                 )}
               </>
             )}
@@ -947,7 +998,13 @@ export function PlanView({
                         ),
                       })),
                     ),
-                  { textAnchor: "middle" },
+                  {
+                    textAnchor: "middle",
+                    seg: {
+                      a: { x: cc.position.x - cc.width / 2, z: cc.position.z - cc.depth / 2 },
+                      b: { x: cc.position.x + cc.width / 2, z: cc.position.z - cc.depth / 2 },
+                    },
+                  },
                 )}
                 {dimLabel(
                   `${cc.id}:D`,
@@ -963,7 +1020,13 @@ export function PlanView({
                         ),
                       })),
                     ),
-                  { dominantBaseline: "middle" },
+                  {
+                    dominantBaseline: "middle",
+                    seg: {
+                      a: { x: cc.position.x + cc.width / 2, z: cc.position.z - cc.depth / 2 },
+                      b: { x: cc.position.x + cc.width / 2, z: cc.position.z + cc.depth / 2 },
+                    },
+                  },
                 )}
               </>
             )}
@@ -1162,6 +1225,7 @@ export function PlanView({
                     textAnchor: "middle",
                     dominantBaseline: "middle",
                     wall: true,
+                    seg: { a, b },
                   },
                 )}
             </g>
