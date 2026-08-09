@@ -12,6 +12,8 @@ export interface ViewState {
   hidden?: string[];
   /** user-dragged Plan dimension-label offsets, keyed by label id */
   dimOffsets?: Record<string, { x: number; z: number }>;
+  /** which Plan dimensions are shown: room walls / furniture items */
+  dims?: { walls: boolean; items: boolean };
 }
 
 export function loadViewState(): ViewState {

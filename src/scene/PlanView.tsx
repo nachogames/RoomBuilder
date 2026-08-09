@@ -89,7 +89,8 @@ export function PlanView({
 }: {
   project: Project;
   setProject: React.Dispatch<React.SetStateAction<Project>>;
-  showDims: boolean;
+  /** which Plan dimensions render: room walls / furniture items */
+  showDims: { walls: boolean; items: boolean };
   /** Ids hidden via the browser-tree eye toggles; not drawn or draggable. */
   hidden?: ReadonlySet<string>;
   /** Measure/Set mode: clicks pick edges/corners instead of dragging. */
@@ -737,8 +738,17 @@ export function PlanView({
             (reference only).
           </>
         )}{" "}
-        Dimensions: <b>{showDims ? "on" : "off"}</b> — click any dimension to
-        type a new value.
+        Dims:{" "}
+        <b>
+          {showDims.walls && showDims.items
+            ? "all"
+            : showDims.walls
+              ? "walls"
+              : showDims.items
+                ? "items"
+                : "none"}
+        </b>{" "}
+        — click any dimension to type a new value, drag it to move it aside.
       </p>
       <svg
         ref={svgRef}
@@ -818,7 +828,7 @@ export function PlanView({
                 strokeWidth={S}
               />
             </g>
-            {showDims && (
+            {showDims.items && (
               <>
                 {dimLabel(
                   `${r.id}:L`,
@@ -921,7 +931,7 @@ export function PlanView({
                 {cc.label}
               </text>
             </g>
-            {showDims && (
+            {showDims.items && (
               <>
                 {dimLabel(
                   `${cc.id}:W`,
@@ -1129,7 +1139,7 @@ export function PlanView({
                 }}
                 onPointerLeave={() => !drag && setGhost(null)}
               />
-              {showDims &&
+              {showDims.walls &&
                 dimLabel(
                   `wall:${i}`,
                   lx,

@@ -327,7 +327,14 @@ function Workspace({
     });
   const [collapse, setCollapse] = useState<Record<string, boolean>>({});
   const [tab, setTab] = useState<Tab>((view0.tab as Tab) ?? "3D");
-  const [showDims, setShowDims] = useState(true);
+  // Plan dimensions, split so you can show walls only, items only, both
+  // or neither. Persisted with the rest of the view state.
+  const [showDims, setShowDims] = useState<{ walls: boolean; items: boolean }>(
+    () => view0.dims ?? { walls: true, items: true },
+  );
+  useEffect(() => {
+    saveViewState({ dims: showDims });
+  }, [showDims]);
   const [measure, setMeasure] = useState(false);
   const [dollhouse, setDollhouse] = useState(true);
   const [savedNames, setSavedNames] = useState<string[]>([]);
@@ -1477,11 +1484,26 @@ function Workspace({
                   Measure
                 </button>
                 <button
-                  className={showDims ? "active" : ""}
-                  onClick={() => setShowDims((s) => !s)}
-                  title="Show or hide all dimensions"
+                  className={showDims.walls || showDims.items ? "active" : ""}
+                  onClick={() =>
+                    setShowDims((s) => {
+                      // cycle: all → walls → items → none → all
+                      if (s.walls && s.items) return { walls: true, items: false };
+                      if (s.walls) return { walls: false, items: true };
+                      if (s.items) return { walls: false, items: false };
+                      return { walls: true, items: true };
+                    })
+                  }
+                  title="Cycle which dimensions show: all → walls → items → none"
                 >
-                  Dimensions: {showDims ? "on" : "off"}
+                  Dims:{" "}
+                  {showDims.walls && showDims.items
+                    ? "all"
+                    : showDims.walls
+                      ? "walls"
+                      : showDims.items
+                        ? "items"
+                        : "none"}
                 </button>
               </>
             )}
