@@ -636,16 +636,10 @@ td {
   margin: 0;
 }
 
-/* delete glyph on a persistent measurement */
-.meas-x {
-  fill: var(--text-faint);
-  cursor: pointer;
-  paint-order: stroke;
-  stroke: var(--bg-canvas);
-  stroke-width: 0.5px;
-}
-.meas-x:hover {
-  fill: var(--danger);
+/* focused dimension (single click): Backspace removes/resets it */
+.dim.focused {
+  fill: var(--accent-strong);
+  text-decoration: underline;
 }
 
 /* ---------- viewport overlay chips (e.g. Dollhouse toggle) ---------- */

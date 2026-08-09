@@ -128,8 +128,36 @@ export function PlanView({
     saveViewState({ dimOffsets });
   }, [dimOffsets]);
   const movedRef = useRef(false);
-  // second quick click on the same dim label = reset it home
+  // click timing: single click focuses a dimension, a quick second click
+  // opens its editor
   const lastDimClickRef = useRef<{ key: string; t: number } | null>(null);
+  const [focusedDim, setFocusedDim] = useState<string | null>(null);
+  // Backspace/Delete on a focused dimension: a measurement annotation is
+  // removed outright; a regular dim label just goes back home.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Backspace" && e.key !== "Delete") return;
+      const ae = document.activeElement as HTMLElement | null;
+      if (
+        ae &&
+        (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || ae.isContentEditable)
+      )
+        return;
+      if (!focusedDim) return;
+      e.preventDefault();
+      if (focusedDim.startsWith("meas:")) {
+        const id = focusedDim.slice(5);
+        setMeasurements((ms) => ms.filter((x) => x.id !== id));
+      }
+      setDimOffsets((o) => {
+        const { [focusedDim]: _drop, ...rest } = o;
+        return rest;
+      });
+      setFocusedDim(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [focusedDim]);
 
   // leaving measure mode (or Escape) drops any half-made measurement
   useEffect(() => {
@@ -137,7 +165,10 @@ export function PlanView({
   }, [measure]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setPicks([]);
+      if (e.key === "Escape") {
+        setPicks([]);
+        setFocusedDim(null);
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -406,7 +437,9 @@ export function PlanView({
           />
         )}
         <text
-          className={`dim edit ${opts?.wall ? "wall" : ""}`}
+          className={`dim edit ${opts?.wall ? "wall" : ""} ${
+            focusedDim === key ? "focused" : ""
+          }`}
           x={lx}
           y={lz}
           fontSize={fontPx}
@@ -737,18 +770,13 @@ export function PlanView({
       const now = Date.now();
       const last = lastDimClickRef.current;
       if (last && last.key === drag.key && now - last.t < 350) {
-        // double-click: send the label home and close the editor it opened
-        const key = drag.key;
-        setDimOffsets((o) => {
-          const { [key]: _drop, ...rest } = o;
-          return rest;
-        });
-        setEdit(null);
+        // double-click: open the editor to type a new value
         lastDimClickRef.current = null;
-      } else {
-        // a click (no drag) on a dimension opens its editor
-        lastDimClickRef.current = { key: drag.key, t: now };
         drag.open();
+      } else {
+        // single click: focus this dimension (Backspace removes/resets it)
+        lastDimClickRef.current = { key: drag.key, t: now };
+        setFocusedDim(drag.key);
       }
     }
     setDrag(null);
@@ -775,10 +803,11 @@ export function PlanView({
           <>
             <b>Measure:</b> click two things — wall edges, wall corners, or
             furniture edges — and the measurement <b>stays on the plan</b>,
-            tracking live. <b>Click its amber number</b> to set the gap
-            (fractions and =math work; 0 = flush) — the <b>second</b> pick
-            moves, once. <b>×</b> removes the annotation without undoing
-            anything. Esc cancels a half-made pick.
+            tracking live. <b>Click</b> a number to focus it,{" "}
+            <b>Backspace</b> deletes it (never undoes a move),{" "}
+            <b>double-click</b> to type the gap you want (↑/↓ steps,
+            fractions, =math; 0 = flush) — the <b>second</b> pick moves,
+            once. Esc cancels a half-made pick.
           </>
         ) : (
           <>
@@ -808,7 +837,8 @@ export function PlanView({
                 ? "items"
                 : "none"}
         </b>{" "}
-        — click any dimension to type a new value, drag it to move it aside.
+        — click a dimension to focus it (Backspace sends it home),
+        double-click to type a new value, drag it to move it aside.
       </p>
       <svg
         ref={svgRef}
@@ -819,6 +849,7 @@ export function PlanView({
         onPointerMove={onMove}
         onPointerUp={endDrag}
         onPointerLeave={endDrag}
+        onPointerDown={() => setFocusedDim(null)}
       >
         {/* wall band (thick stroke) + interior fill */}
         <polygon
@@ -1264,7 +1295,6 @@ export function PlanView({
           const mx = (m.pa.x + m.pb.x) / 2;
           const mz = (m.pa.z + m.pb.z) / 2;
           const key = `meas:${meas.id}`;
-          const off = dimOffsets[key] ?? { x: 0, z: 0 };
           const text = fmt(m.dist);
           return (
             <g key={meas.id}>
@@ -1301,20 +1331,12 @@ export function PlanView({
                     (n) => applyMeasure(meas.a, meas.b, n),
                     true,
                   ),
-                { textAnchor: "middle", accent: true },
+                {
+                  textAnchor: "middle",
+                  accent: true,
+                  seg: { a: m.pa, b: m.pb },
+                },
               )}
-              <text
-                className="meas-x"
-                x={mx + off.x + fontPx * (text.length * 0.32 + 0.9)}
-                y={mz - fontPx * 0.6 + off.z}
-                fontSize={fontPx * 0.9}
-                onPointerDown={(e) => {
-                  e.stopPropagation();
-                  setMeasurements((ms) => ms.filter((x) => x.id !== meas.id));
-                }}
-              >
-                ×
-              </text>
             </g>
           );
         })}
