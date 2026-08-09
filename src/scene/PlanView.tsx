@@ -356,18 +356,13 @@ export function PlanView({
       const az2 = seg.a.z + nz * d;
       const bx2 = seg.b.x + nx * d;
       const bz2 = seg.b.z + nz * d;
-      const over = Math.sign(d || 1) * S * 2; // witness overshoot past the line
-      const tick = fontPx * 0.35; // 45° drafting ticks at the ends
-      const tx = (ex / len - nx) * tick;
-      const tz = (ez / len - nz) * tick;
+      // witness lines end exactly on the dimension line: clean square corners
       const grey = { stroke: "#9a9aa6", strokeOpacity: 0.65, strokeWidth: S * 0.5 };
       bracket = (
         <g pointerEvents="none">
-          <line x1={seg.a.x} y1={seg.a.z} x2={ax2 + nx * over} y2={az2 + nz * over} {...grey} strokeDasharray={`${S * 1.5} ${S}`} />
-          <line x1={seg.b.x} y1={seg.b.z} x2={bx2 + nx * over} y2={bz2 + nz * over} {...grey} strokeDasharray={`${S * 1.5} ${S}`} />
-          <line x1={ax2} y1={az2} x2={bx2} y2={bz2} {...grey} />
-          <line x1={ax2 - tx} y1={az2 - tz} x2={ax2 + tx} y2={az2 + tz} {...grey} strokeWidth={S * 0.8} />
-          <line x1={bx2 - tx} y1={bz2 - tz} x2={bx2 + tx} y2={bz2 + tz} {...grey} strokeWidth={S * 0.8} />
+          <line x1={seg.a.x} y1={seg.a.z} x2={ax2} y2={az2} {...grey} strokeDasharray={`${S * 1.5} ${S}`} />
+          <line x1={seg.b.x} y1={seg.b.z} x2={bx2} y2={bz2} {...grey} strokeDasharray={`${S * 1.5} ${S}`} />
+          <line x1={ax2} y1={az2} x2={bx2} y2={bz2} {...grey} strokeLinecap="square" />
         </g>
       );
     }
