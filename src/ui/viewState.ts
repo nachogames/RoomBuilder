@@ -10,6 +10,8 @@ export interface ViewState {
   cam?: { pos: number[]; target: number[] };
   /** ids hidden via the browser-tree eye toggles (shared by Plan and 3D) */
   hidden?: string[];
+  /** user-dragged Plan dimension-label offsets, keyed by label id */
+  dimOffsets?: Record<string, { x: number; z: number }>;
 }
 
 export function loadViewState(): ViewState {

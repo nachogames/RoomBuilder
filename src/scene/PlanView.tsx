@@ -18,6 +18,7 @@ import {
 } from "../domain/room";
 import { useUnits } from "../ui/units";
 import { DIM_HINT, dimStep } from "../ui/fields";
+import { loadViewState, saveViewState } from "../ui/viewState";
 import { personFootprint } from "../domain/person";
 
 type Drag =
@@ -34,6 +35,15 @@ type Drag =
       spawn: boolean; // straight run -> spawn jut; jut face -> translate
     }
   | { kind: "carcass" | "box" | "runner" | "person"; id: string; dx: number; dz: number }
+  | {
+      kind: "dim";
+      key: string;
+      dx: number;
+      dz: number;
+      sx: number;
+      sz: number;
+      open: () => void;
+    }
   | null;
 
 /** Snap to a clean 1/4" so freehand wall edits land square. */
@@ -93,7 +103,17 @@ export function PlanView({
   const [edit, setEdit] = useState<Edit | null>(null);
   const [ghost, setGhost] = useState<{ x: number; z: number } | null>(null);
   const [picks, setPicks] = useState<PickOwner[]>([]);
+  // User-dragged dimension-label offsets, keyed by a stable label id
+  // (item id + axis, or wall edge index). Persisted so labels stay put.
+  const [dimOffsets, setDimOffsets] = useState<Record<string, Pt>>(
+    () => (loadViewState().dimOffsets as Record<string, Pt>) ?? {},
+  );
+  useEffect(() => {
+    saveViewState({ dimOffsets });
+  }, [dimOffsets]);
   const movedRef = useRef(false);
+  // second quick click on the same dim label = reset it home
+  const lastDimClickRef = useRef<{ key: string; t: number } | null>(null);
 
   // leaving measure mode (or Escape) drops any half-made measurement
   useEffect(() => {
@@ -294,12 +314,87 @@ export function PlanView({
     setPicks([]);
   }
 
+  /** A dimension text that can be dragged out of the way. Click = edit,
+   *  drag = move (leader line back to its anchor), double-click = reset. */
+  function dimLabel(
+    key: string,
+    ax: number,
+    az: number,
+    text: string,
+    open: (lx: number, lz: number) => void,
+    opts?: {
+      textAnchor?: "start" | "middle" | "end";
+      dominantBaseline?: "middle" | "auto";
+      wall?: boolean;
+    },
+  ) {
+    const off = dimOffsets[key] ?? { x: 0, z: 0 };
+    const lx = ax + off.x;
+    const lz = az + off.z;
+    const moved = off.x !== 0 || off.z !== 0;
+    return (
+      <g key={key}>
+        {moved && (
+          <line
+            x1={ax}
+            y1={az}
+            x2={lx}
+            y2={lz}
+            stroke="#9a9aa6"
+            strokeOpacity={0.5}
+            strokeWidth={S * 0.5}
+            strokeDasharray={`${S} ${S}`}
+            pointerEvents="none"
+          />
+        )}
+        <text
+          className={`dim edit ${opts?.wall ? "wall" : ""}`}
+          x={lx}
+          y={lz}
+          fontSize={fontPx}
+          textAnchor={opts?.textAnchor}
+          dominantBaseline={opts?.dominantBaseline}
+          style={{ cursor: "move" }}
+          onPointerDown={(e) => {
+            e.stopPropagation();
+            (e.target as Element).setPointerCapture?.(e.pointerId);
+            const rp = toRoom(e);
+            if (!rp) return;
+            movedRef.current = false;
+            setDrag({
+              kind: "dim",
+              key,
+              dx: off.x - rp.x,
+              dz: off.z - rp.z,
+              sx: rp.x,
+              sz: rp.z,
+              // editor opens just BELOW the label so the label stays
+              // clickable for the double-click reset
+              open: () => open(lx, lz + fontPx * 1.8),
+            });
+          }}
+        >
+          {text}
+        </text>
+      </g>
+    );
+  }
+
   function onMove(e: React.PointerEvent) {
     if (!drag) return;
     const rp = toRoom(e);
     if (!rp) return;
     const { x, z } = rp;
-    if (drag.kind === "corner") {
+    if (drag.kind === "dim") {
+      if (Math.hypot(x - drag.sx, z - drag.sz) > 0.4) movedRef.current = true;
+      if (movedRef.current) {
+        const d = drag;
+        setDimOffsets((o) => ({
+          ...o,
+          [d.key]: { x: x + d.dx, z: z + d.dz },
+        }));
+      }
+    } else if (drag.kind === "corner") {
       // free move — markers can create angled walls between points
       movedRef.current = true;
       const nx = snap(x);
@@ -579,6 +674,24 @@ export function PlanView({
       // a click (no pull) drops a breakpoint at that spot on the wall
       insertCornerAt(drag.index, drag.start);
     }
+    if (drag?.kind === "dim" && !movedRef.current) {
+      const now = Date.now();
+      const last = lastDimClickRef.current;
+      if (last && last.key === drag.key && now - last.t < 350) {
+        // double-click: send the label home and close the editor it opened
+        const key = drag.key;
+        setDimOffsets((o) => {
+          const { [key]: _drop, ...rest } = o;
+          return rest;
+        });
+        setEdit(null);
+        lastDimClickRef.current = null;
+      } else {
+        // a click (no drag) on a dimension opens its editor
+        lastDimClickRef.current = { key: drag.key, t: now };
+        drag.open();
+      }
+    }
     setDrag(null);
     movedRef.current = false;
   }
@@ -707,52 +820,38 @@ export function PlanView({
             </g>
             {showDims && (
               <>
-                <text
-                  className="dim edit"
-                  x={r.position.x}
-                  y={r.position.z - r.depth / 2 - fontPx * 0.4}
-                  fontSize={fontPx}
-                  textAnchor="middle"
-                  onClick={() =>
-                    openEdit(
-                      r.position.x,
-                      r.position.z - r.depth / 2,
-                      r.length,
-                      (n) =>
-                        setProject((pr) => ({
-                          ...pr,
-                          runners: pr.runners.map((x) =>
-                            x.id === r.id ? { ...x, length: n } : x,
-                          ),
-                        })),
-                    )
-                  }
-                >
-                  L {fmt(r.length)}
-                </text>
-                <text
-                  className="dim edit"
-                  x={r.position.x + r.length / 2 + fontPx * 0.4}
-                  y={r.position.z}
-                  fontSize={fontPx}
-                  dominantBaseline="middle"
-                  onClick={() =>
-                    openEdit(
-                      r.position.x + r.length / 2,
-                      r.position.z,
-                      r.depth,
-                      (n) =>
-                        setProject((pr) => ({
-                          ...pr,
-                          runners: pr.runners.map((x) =>
-                            x.id === r.id ? { ...x, depth: n } : x,
-                          ),
-                        })),
-                    )
-                  }
-                >
-                  D {fmt(r.depth)}
-                </text>
+                {dimLabel(
+                  `${r.id}:L`,
+                  r.position.x,
+                  r.position.z - r.depth / 2 - fontPx * 0.4,
+                  `L ${fmt(r.length)}`,
+                  (lx, lz) =>
+                    openEdit(lx, lz, r.length, (n) =>
+                      setProject((pr) => ({
+                        ...pr,
+                        runners: pr.runners.map((x) =>
+                          x.id === r.id ? { ...x, length: n } : x,
+                        ),
+                      })),
+                    ),
+                  { textAnchor: "middle" },
+                )}
+                {dimLabel(
+                  `${r.id}:D`,
+                  r.position.x + r.length / 2 + fontPx * 0.4,
+                  r.position.z,
+                  `D ${fmt(r.depth)}`,
+                  (lx, lz) =>
+                    openEdit(lx, lz, r.depth, (n) =>
+                      setProject((pr) => ({
+                        ...pr,
+                        runners: pr.runners.map((x) =>
+                          x.id === r.id ? { ...x, depth: n } : x,
+                        ),
+                      })),
+                    ),
+                  { dominantBaseline: "middle" },
+                )}
               </>
             )}
           </g>
@@ -824,52 +923,38 @@ export function PlanView({
             </g>
             {showDims && (
               <>
-                <text
-                  className="dim edit"
-                  x={cc.position.x}
-                  y={cc.position.z - cc.depth / 2 - fontPx * 0.4}
-                  fontSize={fontPx}
-                  textAnchor="middle"
-                  onClick={() =>
-                    openEdit(
-                      cc.position.x,
-                      cc.position.z - cc.depth / 2,
-                      cc.width,
-                      (n) =>
-                        setProject((pr) => ({
-                          ...pr,
-                          carcasses: pr.carcasses.map((x) =>
-                            x.id === cc.id ? { ...x, width: n } : x,
-                          ),
-                        })),
-                    )
-                  }
-                >
-                  W {fmt(cc.width)}
-                </text>
-                <text
-                  className="dim edit"
-                  x={cc.position.x + cc.width / 2 + fontPx * 0.4}
-                  y={cc.position.z}
-                  fontSize={fontPx}
-                  dominantBaseline="middle"
-                  onClick={() =>
-                    openEdit(
-                      cc.position.x + cc.width / 2,
-                      cc.position.z,
-                      cc.depth,
-                      (n) =>
-                        setProject((pr) => ({
-                          ...pr,
-                          carcasses: pr.carcasses.map((x) =>
-                            x.id === cc.id ? { ...x, depth: n } : x,
-                          ),
-                        })),
-                    )
-                  }
-                >
-                  D {fmt(cc.depth)}
-                </text>
+                {dimLabel(
+                  `${cc.id}:W`,
+                  cc.position.x,
+                  cc.position.z - cc.depth / 2 - fontPx * 0.4,
+                  `W ${fmt(cc.width)}`,
+                  (lx, lz) =>
+                    openEdit(lx, lz, cc.width, (n) =>
+                      setProject((pr) => ({
+                        ...pr,
+                        carcasses: pr.carcasses.map((x) =>
+                          x.id === cc.id ? { ...x, width: n } : x,
+                        ),
+                      })),
+                    ),
+                  { textAnchor: "middle" },
+                )}
+                {dimLabel(
+                  `${cc.id}:D`,
+                  cc.position.x + cc.width / 2 + fontPx * 0.4,
+                  cc.position.z,
+                  `D ${fmt(cc.depth)}`,
+                  (lx, lz) =>
+                    openEdit(lx, lz, cc.depth, (n) =>
+                      setProject((pr) => ({
+                        ...pr,
+                        carcasses: pr.carcasses.map((x) =>
+                          x.id === cc.id ? { ...x, depth: n } : x,
+                        ),
+                      })),
+                    ),
+                  { dominantBaseline: "middle" },
+                )}
               </>
             )}
           </g>
@@ -1044,16 +1129,14 @@ export function PlanView({
                 }}
                 onPointerLeave={() => !drag && setGhost(null)}
               />
-              {showDims && (
-                <text
-                  className="dim edit wall"
-                  x={lx}
-                  y={lz}
-                  fontSize={fontPx}
-                  textAnchor="middle"
-                  dominantBaseline="middle"
-                  onClick={() =>
-                    openEdit(lx, lz, len, (n) =>
+              {showDims &&
+                dimLabel(
+                  `wall:${i}`,
+                  lx,
+                  lz,
+                  fmt(len),
+                  (ex, ez) =>
+                    openEdit(ex, ez, len, (n) =>
                       setProject((pr) => ({
                         ...pr,
                         room: {
@@ -1064,12 +1147,13 @@ export function PlanView({
                             setWallLength(pr.room.walls, i, n),
                         },
                       })),
-                    )
-                  }
-                >
-                  {fmt(len)}
-                </text>
-              )}
+                    ),
+                  {
+                    textAnchor: "middle",
+                    dominantBaseline: "middle",
+                    wall: true,
+                  },
+                )}
             </g>
           );
         })}
