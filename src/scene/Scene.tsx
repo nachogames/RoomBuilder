@@ -733,16 +733,32 @@ function MoveGizmo({
   }, [project, sel, subSel, kind, proxy, getCurrentTarget, getCurrentRotationY]);
 
   // Capture-phase listener: when user presses on a gizmo handle, suppress
-  // SelectableGroup's onPointerDown so it doesn't steal selection.
+  // SelectableGroup's onPointerDown so it doesn't steal selection. Also
+  // enforce mutual exclusion between the translate arrows and the rotate
+  // ring — where they overlap, a single pointerdown would otherwise start
+  // BOTH drags, so a wall-clamped translation kept feeding the rotate
+  // control and visibly spun the object.
   useEffect(() => {
     const dom = gl.domElement;
+    type TC = { axis?: string | null; enabled?: boolean } | null;
     const onDown = () => {
-      const tc = tcRef.current;
-      const rtc = rotateTcRef.current as { axis?: string } | null;
-      if ((tc && tc.axis) || (rtc && rtc.axis)) gizmoBusy.current = true;
+      const tc = tcRef.current as TC;
+      const rtc = rotateTcRef.current as TC;
+      if (tc?.axis) {
+        if (rtc) rtc.enabled = false; // grabbing an arrow: translate wins
+      } else if (rtc?.axis) {
+        if (tc) tc.enabled = false; // grabbing the ring: rotate wins
+      }
+      if (tc?.axis || rtc?.axis) gizmoBusy.current = true;
     };
     const onUp = () => {
-      setTimeout(() => { gizmoBusy.current = false; }, 0);
+      setTimeout(() => {
+        gizmoBusy.current = false;
+        const tc = tcRef.current as TC;
+        const rtc = rotateTcRef.current as TC;
+        if (tc) tc.enabled = true;
+        if (rtc) rtc.enabled = true;
+      }, 0);
     };
     dom.addEventListener("pointerdown", onDown, { capture: true });
     window.addEventListener("pointerup", onUp, { capture: true });
@@ -751,6 +767,12 @@ function MoveGizmo({
       window.removeEventListener("pointerup", onUp, { capture: true });
     };
   }, [gl]);
+
+  // Runs after every render: prunes the confusing negative-end arrow heads
+  // once the translate control mounts (idempotent thereafter).
+  useEffect(() => {
+    stripNegativeArrowHeads(tcRef.current);
+  });
 
   const isShelf = subSel?.kind === "shelf";
   const visible = isShelf || (!!sel && !!kind);
@@ -870,6 +892,30 @@ function MoveGizmo({
       )}
     </>
   );
+}
+
+/** three r169's translate gizmo puts an arrow head on BOTH ends of each
+ *  axis, but the shaft only spans the positive side — the detached
+ *  negative-end cone reads as an arrow pointing at the gizmo's centre.
+ *  Remove those heads so every axis is one shaft with one outward arrow.
+ *  (Transforms are baked into the geometry, so the negative head is the
+ *  mesh whose bounding-box centre sits on the negative side of its axis.
+ *  Pickers are untouched: grabbing near the centre still drags.) */
+function stripNegativeArrowHeads(tc: unknown) {
+  const translate = (
+    tc as { _gizmo?: { gizmo?: Record<string, THREE.Object3D> } } | null
+  )?._gizmo?.gizmo?.translate;
+  if (!translate) return;
+  const axisOf: Record<string, "x" | "y" | "z"> = { X: "x", Y: "y", Z: "z" };
+  const doomed = translate.children.filter((m) => {
+    const ax = axisOf[m.name];
+    if (!ax) return false;
+    const g = (m as THREE.Mesh).geometry;
+    if (!g) return false;
+    if (!g.boundingBox) g.computeBoundingBox();
+    return g.boundingBox!.getCenter(new THREE.Vector3())[ax] < -0.1;
+  });
+  for (const m of doomed) translate.remove(m);
 }
 
 const NUDGE_DEFAULT = 1;
