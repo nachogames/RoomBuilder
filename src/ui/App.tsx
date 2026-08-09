@@ -328,6 +328,7 @@ function Workspace({
   const [collapse, setCollapse] = useState<Record<string, boolean>>({});
   const [tab, setTab] = useState<Tab>((view0.tab as Tab) ?? "3D");
   const [showDims, setShowDims] = useState(true);
+  const [measure, setMeasure] = useState(false);
   const [dollhouse, setDollhouse] = useState(true);
   const [savedNames, setSavedNames] = useState<string[]>([]);
   const [status, setStatus] = useState("");
@@ -1467,13 +1468,22 @@ function Workspace({
             )}
             <div className="spacer" />
             {tab === "Plan" && (
-              <button
-                className={showDims ? "active" : ""}
-                onClick={() => setShowDims((s) => !s)}
-                title="Show or hide all dimensions"
-              >
-                Dimensions: {showDims ? "on" : "off"}
-              </button>
+              <>
+                <button
+                  className={measure ? "active" : ""}
+                  onClick={() => setMeasure((m) => !m)}
+                  title="Click two edges/corners, then click the distance to set the gap — the second pick moves"
+                >
+                  Measure
+                </button>
+                <button
+                  className={showDims ? "active" : ""}
+                  onClick={() => setShowDims((s) => !s)}
+                  title="Show or hide all dimensions"
+                >
+                  Dimensions: {showDims ? "on" : "off"}
+                </button>
+              </>
             )}
             {tab === "Cut list" && selectedCutList && (
               <button
@@ -1572,6 +1582,7 @@ function Workspace({
                 setProject={setProject}
                 showDims={showDims}
                 hidden={hiddenIds}
+                measure={measure}
                 onSelect={setSel}
               />
             )}

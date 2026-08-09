@@ -1,6 +1,7 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Project, Pt } from "../domain/types";
-import { translateGroup } from "../geometry/group";
+import { corners, translateGroup } from "../geometry/group";
+import { measureBetween, type Seg } from "../geometry/measure";
 import { findContainer, clampToInterior } from "../geometry/container";
 import { attemptToteMove } from "../geometry/totePush";
 import { resolveMove } from "./dragMath";
@@ -52,13 +53,28 @@ interface Edit {
   sy: number;
   value: string;
   commit: (n: number) => void;
+  /** measure tool allows 0 (flush); wall/size edits still require > 0 */
+  allowZero?: boolean;
 }
+
+/** A measure-tool pick. Geometry is resolved fresh from the project each
+ *  render so the highlight tracks live edits. */
+type PickOwner =
+  | { type: "wall-edge"; index: number }
+  | { type: "wall-corner"; index: number }
+  | {
+      type: "item-edge";
+      item: "carcass" | "runner" | "box";
+      id: string;
+      edge: number; // 0..3, corners[k] -> corners[k+1]
+    };
 
 export function PlanView({
   project,
   setProject,
   showDims,
   hidden = new Set<string>(),
+  measure = false,
   onSelect,
 }: {
   project: Project;
@@ -66,6 +82,8 @@ export function PlanView({
   showDims: boolean;
   /** Ids hidden via the browser-tree eye toggles; not drawn or draggable. */
   hidden?: ReadonlySet<string>;
+  /** Measure/Set mode: clicks pick edges/corners instead of dragging. */
+  measure?: boolean;
   onSelect: (id: string) => void;
 }) {
   const { fmt, parse, units } = useUnits();
@@ -74,7 +92,20 @@ export function PlanView({
   const [drag, setDrag] = useState<Drag>(null);
   const [edit, setEdit] = useState<Edit | null>(null);
   const [ghost, setGhost] = useState<{ x: number; z: number } | null>(null);
+  const [picks, setPicks] = useState<PickOwner[]>([]);
   const movedRef = useRef(false);
+
+  // leaving measure mode (or Escape) drops any half-made measurement
+  useEffect(() => {
+    if (!measure) setPicks([]);
+  }, [measure]);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setPicks([]);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   const room = project.room;
   const walls = room.walls;
@@ -113,6 +144,154 @@ export function PlanView({
     const p = pt.matrixTransform(ctm.inverse());
     // SVGPoint is 2D: screen Y maps to the room's Z axis.
     return { x: Math.round(p.x * 100) / 100, z: Math.round(p.y * 100) / 100 };
+  }
+
+  /** World-space rect of a pickable item, or null when gone/hidden. */
+  function itemRect(
+    item: "carcass" | "runner" | "box",
+    id: string,
+  ): { cx: number; cz: number; w: number; d: number; deg: number } | null {
+    if (item === "carcass") {
+      const c2 = project.carcasses.find((k) => k.id === id);
+      return c2
+        ? { cx: c2.position.x, cz: c2.position.z, w: c2.width, d: c2.depth, deg: c2.rotationDeg }
+        : null;
+    }
+    if (item === "runner") {
+      const r = project.runners.find((k) => k.id === id);
+      return r
+        ? { cx: r.position.x, cz: r.position.z, w: r.length, d: r.depth, deg: r.rotationDeg }
+        : null;
+    }
+    const b = project.refBoxes.find((k) => k.id === id);
+    if (!b) return null;
+    return {
+      cx: b.position.x,
+      cz: b.position.z,
+      w: Math.max(b.width, b.topWidth ?? b.width),
+      d: Math.max(b.depth, b.topDepth ?? b.depth),
+      deg: b.rotationDeg,
+    };
+  }
+
+  /** Live segment for a pick (a point is a degenerate segment). */
+  function targetSeg(pk: PickOwner): Seg | null {
+    if (pk.type === "wall-corner") {
+      const p = walls[pk.index];
+      return p ? { a: p, b: p } : null;
+    }
+    if (pk.type === "wall-edge") {
+      const a = walls[pk.index];
+      const b = walls[(pk.index + 1) % walls.length];
+      return a && b ? { a, b } : null;
+    }
+    const r = itemRect(pk.item, pk.id);
+    if (!r) return null;
+    const cs = corners(r.cx, r.cz, r.w, r.d, r.deg);
+    const [ax, az] = cs[pk.edge % 4];
+    const [bx, bz] = cs[(pk.edge + 1) % 4];
+    return { a: { x: ax, z: az }, b: { x: bx, z: bz } };
+  }
+
+  function addPick(pk: PickOwner) {
+    setPicks((prev) => (prev.length >= 2 ? [pk] : [...prev, pk]));
+  }
+
+  /** Pick the item edge nearest to the click point. */
+  function pickItemEdge(
+    item: "carcass" | "runner" | "box",
+    id: string,
+    at: Pt,
+  ) {
+    const r = itemRect(item, id);
+    if (!r) return;
+    const cs = corners(r.cx, r.cz, r.w, r.d, r.deg);
+    let bestEdge = 0;
+    let bestDist = Infinity;
+    for (let k = 0; k < 4; k++) {
+      const [ax, az] = cs[k];
+      const [bx, bz] = cs[(k + 1) % 4];
+      const m = measureBetween(
+        { a: at, b: at },
+        { a: { x: ax, z: az }, b: { x: bx, z: bz } },
+      );
+      if (m.dist < bestDist) {
+        bestDist = m.dist;
+        bestEdge = k;
+      }
+    }
+    addPick({ type: "item-edge", item, id, edge: bestEdge });
+  }
+
+  /** Set the picked distance: translate the SECOND pick's owner along the
+   *  measurement axis so the gap becomes `desired`. Furniture still respects
+   *  walls/baseboard (slide-resolve); wall points/edges move exactly. */
+  function applyMeasure(desired: number) {
+    const [A, B] = picks;
+    const sa = A && targetSeg(A);
+    const sb = B && targetSeg(B);
+    if (!sa || !sb) return;
+    const m = measureBetween(sa, sb);
+    const delta = desired - m.dist;
+    const mv = { x: m.axis.x * delta, z: m.axis.z * delta };
+    if (B.type === "wall-corner") {
+      setProject((pr) => ({
+        ...pr,
+        room: {
+          ...pr.room,
+          walls: pr.room.walls.map((p, i) =>
+            i === B.index ? { x: p.x + mv.x, z: p.z + mv.z } : p,
+          ),
+        },
+      }));
+    } else if (B.type === "wall-edge") {
+      const j = (B.index + 1) % walls.length;
+      setProject((pr) => ({
+        ...pr,
+        room: {
+          ...pr.room,
+          walls: pr.room.walls.map((p, i) =>
+            i === B.index || i === j ? { x: p.x + mv.x, z: p.z + mv.z } : p,
+          ),
+        },
+      }));
+    } else if (B.item === "carcass") {
+      const c2 = project.carcasses.find((k) => k.id === B.id);
+      if (!c2) return;
+      const cWalls = collisionWalls(room, c2.baseHeight ?? 0);
+      const ok = (px: number, pz: number) => {
+        const r = carcassRoomRect(c2, project, px, pz);
+        return rectInsideRoom(cWalls, r.cx, r.cz, r.w, r.d, c2.rotationDeg);
+      };
+      const pos = resolveMove(ok, c2.position.x + mv.x, c2.position.z + mv.z, c2.position, false);
+      setProject((pr) => ({
+        ...pr,
+        carcasses: pr.carcasses.map((k) => (k.id === B.id ? { ...k, position: pos } : k)),
+      }));
+    } else if (B.item === "runner") {
+      const r = project.runners.find((k) => k.id === B.id);
+      if (!r) return;
+      const ok = (px: number, pz: number) =>
+        rectInsideRoom(collisionWalls(room, r.baseHeight ?? 0), px, pz, r.length, r.depth, r.rotationDeg);
+      const pos = resolveMove(ok, r.position.x + mv.x, r.position.z + mv.z, r.position, true);
+      setProject((pr) => ({
+        ...pr,
+        runners: pr.runners.map((k) => (k.id === B.id ? { ...k, position: pos } : k)),
+      }));
+    } else {
+      const bx = project.refBoxes.find((k) => k.id === B.id);
+      if (!bx) return;
+      const bw = Math.max(bx.width, bx.topWidth ?? bx.width);
+      const bd = Math.max(bx.depth, bx.topDepth ?? bx.depth);
+      const ok = (px: number, pz: number) =>
+        rectInsideRoom(collisionWalls(room, bx.baseHeight ?? 0), px, pz, bw, bd, bx.rotationDeg);
+      const pos = resolveMove(ok, bx.position.x + mv.x, bx.position.z + mv.z, bx.position, false);
+      setProject((pr) => ({
+        ...pr,
+        refBoxes: pr.refBoxes.map((k) => (k.id === B.id ? { ...k, position: pos } : k)),
+      }));
+    }
+    setPicks([]);
   }
 
   function onMove(e: React.PointerEvent) {
@@ -333,13 +512,20 @@ export function PlanView({
     }
   }
 
-  function openEdit(ux: number, uz: number, current: number, commit: (n: number) => void) {
+  function openEdit(
+    ux: number,
+    uz: number,
+    current: number,
+    commit: (n: number) => void,
+    allowZero = false,
+  ) {
     const { sx, sy } = screenOf(ux, uz);
     setEdit({
       sx,
       sy,
       value: units === "mm" ? String(Math.round(current * 25.4)) : String(current),
       commit,
+      allowZero,
     });
   }
 
@@ -413,11 +599,22 @@ export function PlanView({
   return (
     <div className="plan" ref={wrapRef}>
       <p className="label" style={{ padding: "8px 12px 0" }}>
-        <b>Click a wall</b> to drop a marker. <b>Drag the wall between two
-        markers</b> → spawns a square 90° jut. <b>Drag the jut&apos;s face</b>{" "}
-        → moves it in/out (changes depth, no new markers). <b>Drag a
-        marker</b> to change the jut width. Double-click a corner to remove
-        it. Drag cabinets/totes to place them.
+        {measure ? (
+          <>
+            <b>Measure:</b> click two things — wall edges, wall corners, or
+            furniture edges. Then <b>click the amber distance</b> and type the
+            gap you want (fractions and =math work; 0 = flush). The{" "}
+            <b>second</b> thing you clicked moves. Esc clears the picks.
+          </>
+        ) : (
+          <>
+            <b>Click a wall</b> to drop a marker. <b>Drag the wall between two
+            markers</b> → spawns a square 90° jut. <b>Drag the jut&apos;s
+            face</b> → moves it in/out (changes depth, no new markers).{" "}
+            <b>Drag a marker</b> to change the jut width. Double-click a
+            corner to remove it. Drag cabinets/totes to place them.
+          </>
+        )}
         {room.baseboard && (
           <>
             {" "}
@@ -483,9 +680,13 @@ export function PlanView({
               transform={`rotate(${r.rotationDeg} ${r.position.x} ${r.position.z})`}
               style={{ cursor: "grab" }}
               onPointerDown={(e) => {
+                const rp = toRoom(e);
+                if (measure) {
+                  if (rp) pickItemEdge("runner", r.id, rp);
+                  return;
+                }
                 (e.target as Element).setPointerCapture?.(e.pointerId);
                 onSelect(r.id);
-                const rp = toRoom(e);
                 setDrag({
                   kind: "runner",
                   id: r.id,
@@ -564,9 +765,13 @@ export function PlanView({
               transform={`rotate(${cc.rotationDeg} ${cc.position.x} ${cc.position.z})`}
               style={{ cursor: "grab" }}
               onPointerDown={(e) => {
+                const rp = toRoom(e);
+                if (measure) {
+                  if (rp) pickItemEdge("carcass", cc.id, rp);
+                  return;
+                }
                 (e.target as Element).setPointerCapture?.(e.pointerId);
                 onSelect(cc.id);
-                const rp = toRoom(e);
                 setDrag({
                   kind: "carcass",
                   id: cc.id,
@@ -677,9 +882,13 @@ export function PlanView({
             transform={`rotate(${b.rotationDeg} ${b.position.x} ${b.position.z})`}
             style={{ cursor: "grab" }}
             onPointerDown={(e) => {
+              const rp = toRoom(e);
+              if (measure) {
+                if (rp) pickItemEdge("box", b.id, rp);
+                return;
+              }
               (e.target as Element).setPointerCapture?.(e.pointerId);
               onSelect(b.id);
-              const rp = toRoom(e);
               setDrag({
                 kind: "box",
                 id: b.id,
@@ -821,9 +1030,15 @@ export function PlanView({
                 x2={b.x}
                 y2={b.z}
                 strokeWidth={fontPx * 1.1}
-                onPointerDown={(e) => startEdgeDrag(e, i)}
+                onPointerDown={(e) => {
+                  if (measure) {
+                    addPick({ type: "wall-edge", index: i });
+                    return;
+                  }
+                  startEdgeDrag(e, i);
+                }}
                 onPointerMove={(e) => {
-                  if (drag) return;
+                  if (drag || measure) return;
                   const rp = toRoom(e);
                   if (rp) setGhost(projectOnSeg(a, b, rp));
                 }}
@@ -859,6 +1074,78 @@ export function PlanView({
           );
         })}
 
+        {/* measure tool: pick highlights + measurement line + set-distance label */}
+        {measure && (() => {
+          const resolved = picks
+            .map((pk) => targetSeg(pk))
+            .filter((s): s is Seg => !!s);
+          const isPt = (s: Seg) => s.a.x === s.b.x && s.a.z === s.b.z;
+          const marks = resolved.map((s, idx) =>
+            isPt(s) ? (
+              <circle
+                key={idx}
+                cx={s.a.x}
+                cy={s.a.z}
+                r={fontPx * 0.7}
+                fill="none"
+                stroke="#e0a458"
+                strokeWidth={S * 1.3}
+                pointerEvents="none"
+              />
+            ) : (
+              <line
+                key={idx}
+                x1={s.a.x}
+                y1={s.a.z}
+                x2={s.b.x}
+                y2={s.b.z}
+                stroke="#e0a458"
+                strokeWidth={S * 1.8}
+                strokeLinecap="round"
+                pointerEvents="none"
+              />
+            ),
+          );
+          if (resolved.length < 2) return <g>{marks}</g>;
+          const m = measureBetween(resolved[0], resolved[1]);
+          const mx = (m.pa.x + m.pb.x) / 2;
+          const mz = (m.pa.z + m.pb.z) / 2;
+          return (
+            <g>
+              {marks}
+              <line
+                x1={m.pa.x}
+                y1={m.pa.z}
+                x2={m.pb.x}
+                y2={m.pb.z}
+                stroke="#e0a458"
+                strokeWidth={S}
+                strokeDasharray={`${S * 2.5} ${S * 2}`}
+                pointerEvents="none"
+              />
+              <text
+                className="dim edit"
+                x={mx}
+                y={mz - fontPx * 0.6}
+                fontSize={fontPx}
+                textAnchor="middle"
+                fill="#e0a458"
+                onClick={() =>
+                  openEdit(
+                    mx,
+                    mz,
+                    Math.round(m.dist * 10000) / 10000,
+                    applyMeasure,
+                    true,
+                  )
+                }
+              >
+                {fmt(m.dist)}
+              </text>
+            </g>
+          );
+        })()}
+
         {/* ghost breakpoint preview where a click would drop a corner */}
         {ghost && !drag && (
           <circle
@@ -879,6 +1166,10 @@ export function PlanView({
             className="corner"
             onPointerDown={(e) => {
               e.stopPropagation();
+              if (measure) {
+                addPick({ type: "wall-corner", index: i });
+                return;
+              }
               (e.target as Element).setPointerCapture?.(e.pointerId);
               movedRef.current = false;
               setGhost(null);
@@ -919,7 +1210,8 @@ export function PlanView({
           }}
           onBlur={(e) => {
             const n = parse(e.target.value);
-            if (n != null && n > 0) edit.commit(n);
+            if (n != null && (n > 0 || (edit.allowZero && n >= 0)))
+              edit.commit(n);
             setEdit(null);
           }}
         />
