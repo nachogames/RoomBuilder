@@ -642,6 +642,39 @@ td {
   text-decoration: underline;
 }
 
+/* shelf placement card on the Assembly tab */
+.assembly-card {
+  position: absolute;
+  top: var(--s2);
+  right: var(--s2);
+  z-index: 1;
+  width: 320px;
+  max-height: calc(100% - var(--s4));
+  overflow: auto;
+  background: #1a1a1fe6;
+  border: 1px solid var(--border);
+  border-radius: var(--r3);
+  padding: var(--s3);
+}
+.assembly-card h4 {
+  margin: 0 0 var(--s1);
+  font-size: var(--fs-md);
+  color: var(--accent);
+}
+.assembly-card table {
+  margin: var(--s2) 0 0;
+}
+.assembly-card th,
+.assembly-card td {
+  padding: 3px var(--s1);
+  font-size: var(--fs-sm);
+}
+.assembly-card td:nth-child(2),
+.assembly-card td:nth-child(3) {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
 /* ---------- viewport overlay chips (e.g. Dollhouse toggle) ---------- */
 .viewport-chip {
   position: absolute;

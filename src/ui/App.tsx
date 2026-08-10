@@ -20,7 +20,7 @@ import {
   RUNNER_PROFILES,
   myRoom,
 } from "../domain/defaults";
-import { evenlySpacedShelves, isEvenlySpaced } from "../domain/shelves";
+import { evenlySpacedShelves, isEvenlySpaced, shelfMarks } from "../domain/shelves";
 import { buildProject } from "../geometry";
 import { snapHeight } from "../geometry/stacking";
 import { buildCutList } from "../cutlist";
@@ -1624,6 +1624,47 @@ function Workspace({
             {tab === "Assembly" && (
               <div className="canvas-wrap" style={{ position: "relative", width: "100%", height: "100%" }}>
                 <AssemblyView project={project} carcassId={sel} />
+                {selected && selected.shelves.length > 0 && (() => {
+                  const { marks, topClear } = shelfMarks(selected, project.catalog);
+                  return (
+                    <div className="assembly-card">
+                      <h4>Shelf placement — {selected.label}</h4>
+                      <p className="label">
+                        Mark = bottom edge of the side panel up to the
+                        shelf&apos;s <b>bottom face</b>
+                        {selected.construction === "capped"
+                          ? " (capped: sides stand on the bottom panel)"
+                          : " (sides run to the floor: includes toe kick + bottom panel)"}
+                        .
+                      </p>
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Shelf</th>
+                            <th>Mark at</th>
+                            <th>Opening below</th>
+                            <th>Joinery</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {marks.map((m) => (
+                            <tr key={m.shelfNumber}>
+                              <td>Shelf {m.shelfNumber}</td>
+                              <td>{fmt(m.markFromSideBottom)}</td>
+                              <td>{fmt(m.clearBelow)}</td>
+                              <td>{m.attachment}</td>
+                            </tr>
+                          ))}
+                          <tr>
+                            <td colSpan={2}>Opening above top shelf</td>
+                            <td>{fmt(topClear)}</td>
+                            <td />
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  );
+                })()}
               </div>
             )}
 
