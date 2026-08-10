@@ -69,6 +69,7 @@ import { DimField, NumField, SelectField, StepField } from "./fields";
 import { UnitsProvider, useUnits } from "./units";
 import { useProjectHistory } from "./useProjectHistory";
 import { JutTool } from "./JutTool";
+import { ShelfMarksDiagram } from "./ShelfMarksDiagram";
 import { SnapshotRecorder } from "./SnapshotRecorder";
 import { bomCsv, cutListCsv, downloadText, pocketCsv } from "../report/csv";
 import {
@@ -1637,6 +1638,7 @@ function Workspace({
                           : " (sides run to the floor: includes toe kick + bottom panel)"}
                         .
                       </p>
+                      <ShelfMarksDiagram c={selected} catalog={project.catalog} />
                       <table>
                         <thead>
                           <tr>
