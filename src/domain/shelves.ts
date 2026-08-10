@@ -62,6 +62,80 @@ export function shelfMarks(
   return { marks, topClear };
 }
 
+/** Set the clear opening under the `gapIndex`-th shelf (bottom-up, 0-based;
+ *  gapIndex === shelfCount sets the TOP opening by moving only the top
+ *  shelf). The shelf directly above the gap moves to produce the opening;
+ *  every shelf above it slides by the same delta, so their own openings are
+ *  preserved. Results clamp to the interior and are returned bottom-up. */
+export function setOpeningClear(
+  c: Carcass,
+  catalog: StockCatalog,
+  gapIndex: number,
+  clear: number,
+): ShelfSpec[] {
+  const ts = catalog.materials.find((m) => m.id === c.shelfMaterialId)!
+    .thickness;
+  const interiorH = interiorClearHeight(c, catalog);
+  const maxOff = Math.max(0, interiorH - ts);
+  const sorted = [...c.shelves].sort(
+    (a, b) => a.offsetFromBottom - b.offsetFromBottom,
+  );
+  const n = sorted.length;
+  if (n === 0) return sorted;
+  const offs = sorted.map((s) => s.offsetFromBottom);
+  if (gapIndex >= n) {
+    // top opening: bring only the top shelf to interiorH - ts - clear
+    offs[n - 1] = interiorH - ts - clear;
+  } else {
+    const below = gapIndex === 0 ? 0 : offs[gapIndex - 1] + ts;
+    const delta = below + clear - offs[gapIndex];
+    for (let i = gapIndex; i < n; i++) offs[i] += delta;
+  }
+  // clamp into the cavity, keeping shelves from overlapping one another
+  let prevTop = 0;
+  for (let i = 0; i < n; i++) {
+    offs[i] = Math.min(maxOff, Math.max(prevTop, offs[i]));
+    prevTop = offs[i] + ts;
+  }
+  return sorted.map((s, i) => ({ ...s, offsetFromBottom: offs[i] }));
+}
+
+/** Recompute `target`'s shelves so each shelf TOP surface sits at the same
+ *  absolute height from the floor as `source`'s — regardless of differing
+ *  baseHeight (e.g. one cabinet up on the baseboard), toe kicks, heights or
+ *  construction. Shelves that would land outside the target's interior are
+ *  dropped. For facing cabinets carrying a shared runner. */
+export function alignShelvesTo(
+  target: Carcass,
+  source: Carcass,
+  catalog: StockCatalog,
+): ShelfSpec[] {
+  const thick = (id: string) =>
+    catalog.materials.find((m) => m.id === id)!.thickness;
+  const tSrc = thick(source.carcassMaterialId);
+  const tTgt = thick(target.carcassMaterialId);
+  const tsSrc = thick(source.shelfMaterialId);
+  const tsTgt = thick(target.shelfMaterialId);
+  const srcFloorAbs = (source.baseHeight ?? 0) + source.toeKickHeight + tSrc;
+  const tgtFloorAbs = (target.baseHeight ?? 0) + target.toeKickHeight + tTgt;
+  const attach =
+    target.shelves[0]?.attachment ??
+    source.shelves[0]?.attachment ??
+    "pocket-screw";
+  const interiorH = interiorClearHeight(target, catalog);
+  const maxOff = Math.max(0, interiorH - tsTgt);
+  return source.shelves
+    .map((s) => {
+      const topAbs = srcFloorAbs + s.offsetFromBottom + tsSrc;
+      return {
+        offsetFromBottom: topAbs - tsTgt - tgtFloorAbs,
+        attachment: attach,
+      };
+    })
+    .filter((s) => s.offsetFromBottom >= 0 && s.offsetFromBottom <= maxOff)
+    .sort((a, b) => a.offsetFromBottom - b.offsetFromBottom);
+}
+
 /** True iff the shelves are positioned as `evenlySpacedShelves` would
  *  produce for the same count and carcass — i.e. the user hasn't customized
  *  any positions. Compared with a 1/64" tolerance (the inspector grid). */

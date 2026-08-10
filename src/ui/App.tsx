@@ -20,7 +20,13 @@ import {
   RUNNER_PROFILES,
   myRoom,
 } from "../domain/defaults";
-import { evenlySpacedShelves, isEvenlySpaced, shelfMarks } from "../domain/shelves";
+import {
+  alignShelvesTo,
+  evenlySpacedShelves,
+  isEvenlySpaced,
+  setOpeningClear,
+  shelfMarks,
+} from "../domain/shelves";
 import { buildProject } from "../geometry";
 import { snapHeight } from "../geometry/stacking";
 import { buildCutList } from "../cutlist";
@@ -1014,6 +1020,36 @@ function Workspace({
                 onChange={setShelfCount}
                 min={0}
               />
+              {project.carcasses.length > 1 && (
+                <label
+                  className="field"
+                  title="Rebuild this cabinet's shelves so every shelf TOP sits at the same height from the floor as the chosen cabinet's — a runner laid across both will be level, even with different heights, toe kicks, elevations or construction. Re-pick after changing either cabinet's elevation."
+                >
+                  <span>Align shelves with</span>
+                  <select
+                    value=""
+                    onChange={(e) => {
+                      const src = project.carcasses.find(
+                        (x) => x.id === e.target.value,
+                      );
+                      if (!src) return;
+                      patchSelected({
+                        shelves: alignShelvesTo(selected, src, project.catalog),
+                      });
+                      e.currentTarget.value = "";
+                    }}
+                  >
+                    <option value="">Pick a cabinet…</option>
+                    {project.carcasses
+                      .filter((x) => x.id !== selected.id)
+                      .map((x) => (
+                        <option key={x.id} value={x.id}>
+                          {x.label}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+              )}
               {selected.shelves.length > 0 &&
                 !isEvenlySpaced(selected, project.catalog) && (
                   <div className="field" style={{ flexDirection: "column", alignItems: "stretch", gap: 4 }}>
@@ -1638,7 +1674,24 @@ function Workspace({
                           : " (sides run to the floor: includes toe kick + bottom panel)"}
                         .
                       </p>
-                      <ShelfMarksDiagram c={selected} catalog={project.catalog} />
+                      <p className="label">
+                        Click an opening to type the clear height you want —
+                        the shelf above moves, the stack above it follows.
+                      </p>
+                      <ShelfMarksDiagram
+                        c={selected}
+                        catalog={project.catalog}
+                        onSetOpening={(gap, clear) =>
+                          patchSelected({
+                            shelves: setOpeningClear(
+                              selected,
+                              project.catalog,
+                              gap,
+                              clear,
+                            ),
+                          })
+                        }
+                      />
                       <table>
                         <thead>
                           <tr>
