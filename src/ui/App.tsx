@@ -8,7 +8,6 @@ import type {
   SupportKind,
 } from "../domain/types";
 import {
-  defaultProject,
   defaultBookcase,
   defaultRunner,
   defaultRefBox,
@@ -86,6 +85,7 @@ import {
   saveProject,
   saveProjectToDisk,
 } from "../persistence/store";
+import { starterProject } from "../rooms";
 
 const SHELF_ATTACH: readonly ShelfAttachment[] = [
   "pocket-screw",
@@ -237,7 +237,7 @@ function PlacementFields({
 }
 
 export default function App() {
-  const hist = useProjectHistory(defaultProject());
+  const hist = useProjectHistory(starterProject());
   return (
     <UnitsProvider units={hist.project.units}>
       <Workspace

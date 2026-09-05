@@ -1,0 +1,503 @@
+{
+  "schemaVersion": 1,
+  "name": "My Room",
+  "units": "in",
+  "catalog": {
+    "kerf": 0.125,
+    "materials": [
+      {
+        "id": "ply-0.75",
+        "name": "3/4\" Birch Plywood",
+        "kind": "sheet",
+        "thickness": 0.75
+      },
+      {
+        "id": "ply-0.25",
+        "name": "1/4\" Plywood (back)",
+        "kind": "sheet",
+        "thickness": 0.25
+      },
+      {
+        "id": "ply-1.5",
+        "name": "1-1/2\" Plywood",
+        "kind": "sheet",
+        "thickness": 1.5
+      },
+      {
+        "id": "pine-1x12",
+        "name": "1x12 Pine (3/4\")",
+        "kind": "board",
+        "thickness": 0.75
+      },
+      {
+        "id": "pine-2x12",
+        "name": "2x12 Pine (1-1/2\")",
+        "kind": "board",
+        "thickness": 1.5
+      },
+      {
+        "id": "pine-2x10",
+        "name": "2x10 Pine (1-1/2\")",
+        "kind": "board",
+        "thickness": 1.5
+      },
+      {
+        "id": "pine-2x8",
+        "name": "2x8 Pine (1-1/2\")",
+        "kind": "board",
+        "thickness": 1.5
+      },
+      {
+        "id": "pine-2x6",
+        "name": "2x6 Pine (1-1/2\")",
+        "kind": "board",
+        "thickness": 1.5
+      }
+    ],
+    "sheets": [
+      {
+        "materialId": "ply-0.75",
+        "width": 48,
+        "length": 96
+      },
+      {
+        "materialId": "ply-0.25",
+        "width": 48,
+        "length": 96
+      },
+      {
+        "materialId": "ply-1.5",
+        "width": 48,
+        "length": 96
+      }
+    ],
+    "boards": [
+      {
+        "materialId": "pine-1x12",
+        "width": 11.25,
+        "length": 96,
+        "nominal": "1x12"
+      },
+      {
+        "materialId": "pine-2x12",
+        "width": 11.25,
+        "length": 144,
+        "nominal": "2x12"
+      },
+      {
+        "materialId": "pine-2x10",
+        "width": 9.25,
+        "length": 144,
+        "nominal": "2x10"
+      },
+      {
+        "materialId": "pine-2x8",
+        "width": 7.25,
+        "length": 144,
+        "nominal": "2x8"
+      },
+      {
+        "materialId": "pine-2x6",
+        "width": 5.5,
+        "length": 144,
+        "nominal": "2x6"
+      }
+    ],
+    "grainMatters": false,
+    "trimAllowance": 0
+  },
+  "room": {
+    "length": 128.5,
+    "width": 106,
+    "ceilingHeight": 96,
+    "wallThickness": 4.5,
+    "walls": [
+      {
+        "x": 0,
+        "z": -0.25
+      },
+      {
+        "x": 128.5,
+        "z": -0.25
+      },
+      {
+        "x": 128.5,
+        "z": 20.5
+      },
+      {
+        "x": 114.5,
+        "z": 20.75
+      },
+      {
+        "x": 114.5,
+        "z": 33.75
+      },
+      {
+        "x": 126,
+        "z": 33.75
+      },
+      {
+        "x": 126,
+        "z": 106
+      },
+      {
+        "x": 0,
+        "z": 106
+      }
+    ],
+    "baseboard": {
+      "height": 5.5,
+      "thickness": 0.5
+    }
+  },
+  "carcasses": [
+    {
+      "id": "carcass-4",
+      "label": "Desk cabinet L",
+      "width": 14.125,
+      "height": 27.25,
+      "depth": 24,
+      "carcassMaterialId": "ply-0.75",
+      "backMaterialId": "ply-0.25",
+      "shelfMaterialId": "ply-0.75",
+      "hasBack": true,
+      "toeKickHeight": 3,
+      "carcassJoinery": "pocket-screw",
+      "shelves": [
+        {
+          "offsetFromBottom": 11,
+          "attachment": "shelf-pin"
+        }
+      ],
+      "position": {
+        "x": 42.60225707746519,
+        "z": 13.114999999999998
+      },
+      "rotationDeg": 0,
+      "baseHeight": 0
+    },
+    {
+      "id": "carcass-6",
+      "label": "Desk cabinet R",
+      "width": 14.125,
+      "height": 27.25,
+      "depth": 24,
+      "carcassMaterialId": "ply-0.75",
+      "backMaterialId": "ply-0.25",
+      "shelfMaterialId": "ply-0.75",
+      "hasBack": true,
+      "toeKickHeight": 3,
+      "carcassJoinery": "pocket-screw",
+      "shelves": [
+        {
+          "offsetFromBottom": 11,
+          "attachment": "shelf-pin"
+        }
+      ],
+      "position": {
+        "x": 83.61286937477458,
+        "z": 13.300000000000004
+      },
+      "rotationDeg": 0,
+      "baseHeight": 0
+    },
+    {
+      "id": "carcass-cd44cbfc-3",
+      "label": "Bookcase R",
+      "width": 20.5,
+      "height": 89.5,
+      "depth": 13.75,
+      "carcassMaterialId": "ply-0.75",
+      "backMaterialId": "ply-0.25",
+      "shelfMaterialId": "ply-0.75",
+      "hasBack": true,
+      "toeKickHeight": 0,
+      "carcassJoinery": "pocket-screw",
+      "targetOpeningWidth": 20.75,
+      "shelves": [
+        {
+          "offsetFromBottom": 22.028326693012833,
+          "attachment": "pocket-screw"
+        },
+        {
+          "offsetFromBottom": 35.5,
+          "attachment": "pocket-screw"
+        },
+        {
+          "offsetFromBottom": 49,
+          "attachment": "pocket-screw"
+        },
+        {
+          "offsetFromBottom": 68.5,
+          "attachment": "pocket-screw"
+        }
+      ],
+      "position": {
+        "x": 121.01301878043607,
+        "z": 10.127767260655117
+      },
+      "rotationDeg": 90,
+      "baseHeight": 5.5,
+      "construction": "capped"
+    },
+    {
+      "id": "carcass-e267bca7-380",
+      "label": "Bookcase L",
+      "width": 19.5,
+      "height": 94.5,
+      "depth": 14,
+      "carcassMaterialId": "ply-0.75",
+      "backMaterialId": "ply-0.25",
+      "shelfMaterialId": "ply-0.75",
+      "hasBack": true,
+      "toeKickHeight": 3,
+      "carcassJoinery": "pocket-screw",
+      "targetOpeningWidth": 20.75,
+      "shelves": [
+        {
+          "offsetFromBottom": 24.528326693012833,
+          "attachment": "pocket-screw"
+        },
+        {
+          "offsetFromBottom": 38,
+          "attachment": "pocket-screw"
+        },
+        {
+          "offsetFromBottom": 51.5,
+          "attachment": "pocket-screw"
+        },
+        {
+          "offsetFromBottom": 71,
+          "attachment": "pocket-screw"
+        }
+      ],
+      "position": {
+        "x": 7.7519431973346915,
+        "z": 10.049033906868262
+      },
+      "rotationDeg": 270,
+      "baseHeight": 0
+    }
+  ],
+  "runners": [
+    {
+      "id": "runner-7",
+      "label": "Desk top",
+      "boardMaterialId": "ply-1.5",
+      "spannedCarcassIds": [
+        "carcass-4",
+        "carcass-6"
+      ],
+      "length": 98.25,
+      "depth": 26.25,
+      "position": {
+        "x": 64.39,
+        "z": 13.21
+      },
+      "rotationDeg": 0,
+      "baseHeight": 27.25,
+      "fastening": "screw-through",
+      "supports": [],
+      "groupDrag": true,
+      "nudge": {
+        "x": 0,
+        "z": 0
+      }
+    },
+    {
+      "id": "runner-52aad888-1109",
+      "label": "Runner shelf",
+      "boardMaterialId": "pine-2x12",
+      "spannedCarcassIds": [
+        "carcass-4",
+        "carcass-6",
+        "carcass-cd44cbfc-3",
+        "carcass-e267bca7-380"
+      ],
+      "length": 126.84251773916458,
+      "depth": 11.25,
+      "position": {
+        "x": 64.17320206691697,
+        "z": 11.301869071679556
+      },
+      "rotationDeg": 0,
+      "baseHeight": 56,
+      "fastening": "pocket-screw",
+      "supports": [
+        {
+          "id": "sup-5551b46a-1715",
+          "kind": "leg",
+          "offsetFromLeft": 65,
+          "offsetFromCenterZ": -4.75
+        }
+      ],
+      "groupDrag": false,
+      "nudge": {
+        "x": 0,
+        "z": 0
+      }
+    },
+    {
+      "id": "runner-b45ef0ed-770",
+      "label": "Runner shelf",
+      "boardMaterialId": "pine-2x12",
+      "spannedCarcassIds": [
+        "carcass-4",
+        "carcass-6",
+        "carcass-cd44cbfc-3",
+        "carcass-e267bca7-380"
+      ],
+      "groupDrag": false,
+      "length": 126.84251773916458,
+      "depth": 11.25,
+      "position": {
+        "x": 64.17320206691697,
+        "z": 9.818890814910318
+      },
+      "rotationDeg": 0,
+      "baseHeight": 75.5,
+      "fastening": "pocket-screw",
+      "supports": [],
+      "nudge": {
+        "x": 0,
+        "z": 0
+      }
+    }
+  ],
+  "refBoxes": [
+    {
+      "id": "box-9",
+      "label": "Tote",
+      "width": 13,
+      "height": 16.5,
+      "depth": 19,
+      "position": {
+        "x": 117.13724921387796,
+        "z": 8.752767260655117
+      },
+      "rotationDeg": 90,
+      "baseHeight": 57.5,
+      "topWidth": 16.25,
+      "topDepth": 22.25
+    },
+    {
+      "id": "box-1142a6e6-5555",
+      "label": "Tote",
+      "width": 13,
+      "height": 16.5,
+      "depth": 19,
+      "topWidth": 16.25,
+      "topDepth": 22.25,
+      "position": {
+        "x": 117.13724921387796,
+        "z": 8.752767260655117
+      },
+      "rotationDeg": 90,
+      "baseHeight": 6.25
+    },
+    {
+      "id": "box-c9d13ee3-119",
+      "label": "Tote",
+      "width": 13,
+      "height": 16.5,
+      "depth": 19,
+      "topWidth": 16.25,
+      "topDepth": 22.25,
+      "position": {
+        "x": 11.876943197334693,
+        "z": 10.92403390686826
+      },
+      "rotationDeg": 90,
+      "baseHeight": 77
+    },
+    {
+      "id": "box-91eb7555-122",
+      "label": "Tote",
+      "width": 13,
+      "height": 16.5,
+      "depth": 19,
+      "topWidth": 16.25,
+      "topDepth": 22.25,
+      "position": {
+        "x": 59.00024148497295,
+        "z": 8.096340783229866
+      },
+      "rotationDeg": 90,
+      "baseHeight": 77
+    },
+    {
+      "id": "box-8ada9f53-125",
+      "label": "Tote",
+      "width": 13,
+      "height": 16.5,
+      "depth": 19,
+      "topWidth": 16.25,
+      "topDepth": 22.25,
+      "position": {
+        "x": 116.76301878043607,
+        "z": 8.752767260655117
+      },
+      "rotationDeg": 90,
+      "baseHeight": 77
+    },
+    {
+      "id": "box-d7eb7925-912",
+      "label": "Tote",
+      "width": 13,
+      "height": 16.5,
+      "depth": 19,
+      "topWidth": 16.25,
+      "topDepth": 22.25,
+      "position": {
+        "x": 36.75024148497295,
+        "z": 8.135393826055049
+      },
+      "rotationDeg": 90,
+      "baseHeight": 77
+    },
+    {
+      "id": "box-6edc850e-1099",
+      "label": "Tote",
+      "width": 13,
+      "height": 16.5,
+      "depth": 19,
+      "topWidth": 16.25,
+      "topDepth": 22.25,
+      "position": {
+        "x": 93.95554212525681,
+        "z": 7.944124528807244
+      },
+      "rotationDeg": -90,
+      "baseHeight": 77
+    },
+    {
+      "id": "box-d456b2e4-867",
+      "label": "Tote",
+      "width": 13,
+      "height": 16.5,
+      "depth": 19,
+      "topWidth": 16.25,
+      "topDepth": 22.25,
+      "position": {
+        "x": 22.950813429333117,
+        "z": 12.425500040354642
+      },
+      "rotationDeg": 0,
+      "baseHeight": 5.658120266936226
+    }
+  ],
+  "people": [
+    {
+      "id": "person-7e55a7c4-45",
+      "label": "Person",
+      "position": {
+        "x": 64.56,
+        "z": 29.419999999999998
+      },
+      "rotationDeg": -180,
+      "baseHeight": 0,
+      "pose": "standing",
+      "height": 70
+    }
+  ]
+}
