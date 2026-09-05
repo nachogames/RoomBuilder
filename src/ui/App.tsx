@@ -85,7 +85,7 @@ import {
   saveProject,
   saveProjectToDisk,
 } from "../persistence/store";
-import { starterProject } from "../rooms";
+import { STARTER_ROOM_NAME, starterFirst, starterProject } from "../rooms";
 
 const SHELF_ATTACH: readonly ShelfAttachment[] = [
   "pocket-screw",
@@ -426,7 +426,7 @@ function Workspace({
     const t = setTimeout(() => {
       saveProject(project)
         .then(() => listProjects())
-        .then(setSavedNames)
+        .then((ns) => setSavedNames(starterFirst(ns)))
         .catch(() => {});
       saveViewState({ project: project.name });
     }, 800);
@@ -434,7 +434,20 @@ function Workspace({
   }, [project]);
 
   useEffect(() => {
-    listProjects().then(setSavedNames).catch(() => {});
+    listProjects().then((ns) => setSavedNames(starterFirst(ns))).catch(() => {});
+    // First visit since the bundled starter room shipped: save it alongside any
+    // existing projects and open it (it is already the initial state).
+    if (!view0.seeded?.includes(STARTER_ROOM_NAME)) {
+      saveProject(project)
+        .then(() => listProjects())
+        .then((ns) => setSavedNames(starterFirst(ns)))
+        .catch(() => {});
+      saveViewState({
+        seeded: [...(view0.seeded ?? []), STARTER_ROOM_NAME],
+        project: STARTER_ROOM_NAME,
+      });
+      return;
+    }
     // restore the last-opened project on startup
     const last = view0.project;
     if (last) {
